@@ -1203,8 +1203,7 @@ def process_proxy(args):
     analytical_model.proxied(args.in_files, args.out_files)
 
 
-
-if __name__ == "__main__":
+def _run_main():
     parser = argparse.ArgumentParser(description="Process PVD files")
 
     # common
@@ -1267,6 +1266,9 @@ if __name__ == "__main__":
 
     args.func(args)
 
+
+if __name__ == "__main__":
+    _run_main()
 else:
     import matplotlib as mpl # needed to avoid conflicts with vtk
     mpl.use('Cairo')         # use Cairo backend
