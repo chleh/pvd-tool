@@ -1,4 +1,6 @@
-#!/usr/bin/python2
+#!/usr/bin/python
+#
+# Copyright (C) 2015 Christoph Lehmann
 #
 # This file is part of pvd-tool.
 #
@@ -48,7 +50,6 @@ import math
 # TODO load these big libs on demand
 
 # import matplotlib as mpl # needed to avoid conflicts with vtk
-# mpl.use('Cairo')         # use Cairo backend
 # import matplotlib.pyplot as plt
 # 
 # # has to be imported after matplotlib
@@ -942,7 +943,6 @@ def process_timeseries_diff(args):
     if not args.attr: args.attr = ['*']
     if args.out_plot:
         import matplotlib as mpl # needed to avoid conflicts with vtk
-        mpl.use('Cairo')         # use Cairo backend
         import matplotlib.pyplot as plt
         globals()["mpl"] = mpl
         globals()["plt"] = plt
@@ -1014,7 +1014,6 @@ def process_timeseries(args):
     if not args.attr: args.attr = ['*']
     if args.out_plot:
         import matplotlib as mpl # needed to avoid conflicts with vtk
-        mpl.use('Cairo')         # use Cairo backend
         import matplotlib.pyplot as plt
         globals()["mpl"] = mpl
         globals()["plt"] = plt
@@ -1102,7 +1101,6 @@ def process_timeseries(args):
 def process_whole_domain(args):
     if not args.attr: args.attr = ['*']
     # import matplotlib as mpl # needed to avoid conflicts with vtk
-    # mpl.use('Cairo')         # use Cairo backend
     # import matplotlib.pyplot as plt
 
     # has to be imported after matplotlib
@@ -1288,7 +1286,6 @@ if __name__ == "__main__":
     _run_main()
 else:
     import matplotlib as mpl # needed to avoid conflicts with vtk
-    mpl.use('Cairo')         # use Cairo backend
     import matplotlib.pyplot as plt
     # has to be imported after matplotlib
     import vtk
