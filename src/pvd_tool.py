@@ -1,4 +1,6 @@
-#!/usr/bin/python2
+#!/usr/bin/python
+#
+# Copyright (C) 2015 Christoph Lehmann
 #
 # This file is part of pvd-tool.
 #
