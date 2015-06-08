@@ -45,14 +45,7 @@ from fnmatch import fnmatchcase
 
 import math
 
-# TODO load these big libs on demand
-
-# import matplotlib as mpl # needed to avoid conflicts with vtk
-# mpl.use('Cairo')         # use Cairo backend
-# import matplotlib.pyplot as plt
-# 
-# # has to be imported after matplotlib
-# import vtk
+import six
 
 
 
@@ -273,6 +266,9 @@ class MetaList(EqMixin):
         assert len(cols) == 1
         return cols[0]
 
+    def get_column_from(self, recs, **kwargs):
+        return recs[:, self.get_column(**kwargs)]
+
     def columns(self, **kwargs):
         for i, m in enumerate(self.ms):
             match = True
@@ -434,10 +430,15 @@ def write_csv(meta, records, outFile, precision, json_enc):
 
 
 def read_csv(fh, parse_header=True):
+    if isinstance(fh, six.string_types):
+        with open(fh) as fh_:
+            return read_csv(fh_, parse_header)
+
+    meta = None
+
     if parse_header:
         mode = 0 # initial
         json_str = ""
-        meta = None
 
         while True:
             lastpos = fh.tell()
@@ -476,14 +477,9 @@ def read_csv(fh, parse_header=True):
         if json:
             meta = MetaList(json.loads(json_str, object_hook=Meta))
 
-
-
     arr = np.loadtxt(fh)
 
-    if parse_header:
-        return arr, meta
-
-    return arr
+    return arr, meta
 
 
 def plot_to_file(*args):
@@ -942,7 +938,6 @@ def process_timeseries_diff(args):
     if not args.attr: args.attr = ['*']
     if args.out_plot:
         import matplotlib as mpl # needed to avoid conflicts with vtk
-        mpl.use('Cairo')         # use Cairo backend
         import matplotlib.pyplot as plt
         globals()["mpl"] = mpl
         globals()["plt"] = plt
@@ -1014,7 +1009,6 @@ def process_timeseries(args):
     if not args.attr: args.attr = ['*']
     if args.out_plot:
         import matplotlib as mpl # needed to avoid conflicts with vtk
-        mpl.use('Cairo')         # use Cairo backend
         import matplotlib.pyplot as plt
         globals()["mpl"] = mpl
         globals()["plt"] = plt
@@ -1101,9 +1095,6 @@ def process_timeseries(args):
 
 def process_whole_domain(args):
     if not args.attr: args.attr = ['*']
-    # import matplotlib as mpl # needed to avoid conflicts with vtk
-    # mpl.use('Cairo')         # use Cairo backend
-    # import matplotlib.pyplot as plt
 
     # has to be imported after matplotlib
     import vtk
@@ -1288,8 +1279,10 @@ if __name__ == "__main__":
     _run_main()
 else:
     import matplotlib as mpl # needed to avoid conflicts with vtk
-    mpl.use('Cairo')         # use Cairo backend
     import matplotlib.pyplot as plt
     # has to be imported after matplotlib
-    import vtk
+    try:
+        import vtk
+    except ImportError:
+        warn("module vtk will not be available")
 
