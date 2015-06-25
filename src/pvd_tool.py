@@ -312,7 +312,7 @@ class MetaList(EqMixin):
         self.ms.append(*args, **kwargs)
 
 
-def filter_grid_ts(src, grid, timestep, attrs, points):
+def filter_grid_ts(src, grid, timestep, attrs, points, incl_coords):
     gridPoints = grid.GetPoints()
 
     attrIdcs = get_attribute_idcs(grid.GetPointData(), attrs)
@@ -335,11 +335,12 @@ def filter_grid_ts(src, grid, timestep, attrs, points):
             # rec.append(p)
             # meta.append(Meta(src, DoV.DOM, "pt-id", None, pi))
 
-            coords = gridPoints.GetPoint(p)
-            for ci in xrange(len(coords)):
-                coord = coords[ci]
-                rec.append(coord)
-                meta.append(Meta(src, DoV.DOM, "coord", ci, p))
+            if incl_coords:
+                coords = gridPoints.GetPoint(p)
+                for ci in xrange(len(coords)):
+                    coord = coords[ci]
+                    rec.append(coord)
+                    meta.append(Meta(src, DoV.DOM, "coord", ci, p))
 
             for ai in xrange(len(attrData)):
                 a = attrData[ai]
@@ -648,12 +649,12 @@ def gather_grids(infh, reader):
     return timesteps, [ get_grid(f) for f in fs ]
 
 
-def get_timeseries(src, grids, tss, attrs, points):
+def get_timeseries(src, grids, tss, attrs, points, incl_coords):
     oldMeta = None
     records = []
 
     for i in xrange(len(grids)):
-        rec, meta = filter_grid_ts(src, grids[i], tss[i], attrs, points)
+        rec, meta = filter_grid_ts(src, grids[i], tss[i], attrs, points, incl_coords)
         if rec is not None:
             if oldMeta is None:
                 oldMeta = meta
@@ -995,7 +996,8 @@ def process_timeseries_diff(args):
                 else:
                     grids = vtuFiles[num]
 
-                recs, meta = get_timeseries(src, grids, tss, args.attr, args.point)
+                # TODO find better solution for out_coords
+                recs, meta = get_timeseries(src, grids, tss, args.attr, args.point, args.out_coords)
                 if tfm_idx != 0:
                     for m in meta: m.tfm = True
                 aggr_data[num][tfm_idx] = (recs, meta)
@@ -1058,7 +1060,7 @@ def process_timeseries(args):
                 else:
                     grids = vtuFiles[num]
 
-                recs, meta = get_timeseries(src, grids, tss, args.attr, args.point)
+                recs, meta = get_timeseries(src, grids, tss, args.attr, args.point, args.out_coords)
                 if tfm_idx != 0:
                     for m in meta: m.tfm = True
                 aggr_data[num][tfm_idx] = (recs, meta)
@@ -1235,6 +1237,7 @@ def _run_main():
     parser_io.add_argument("-i", "--in", action="append", type=InputFile, required=True, help="input file", dest="in_files", metavar="IN_FILE")
     parser_io.add_argument("--no-combine-domains", action="store_false", dest="combine_domains", help="do not combine domains when aggregating several input files into one output file")
     parser_io.add_argument("--csv-prec", nargs=1, type=int, help="decimal precision for csv output", default=[6])
+    parser_io.add_argument("--no-coords", action="store_false", dest="out_coords", help="do not output coordinate columns")
 
 
     subparsers = parser.add_subparsers(dest="subcommand", help="subcommands")
