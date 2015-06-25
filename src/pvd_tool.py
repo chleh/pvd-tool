@@ -587,12 +587,14 @@ def _plot_to_file(meta, recs, outfh, style_cb=None):
         ymin = float("inf")
         for i, m in metas:
             ys = recs[:,i]
-            ymax = max(ymax, max(ys))
-            ymin = min(ymin, min(ys))
-            if times is not None:
-                ax.plot(times, ys, label=m, marker=marker.next(), markersize=5)
-            else:
-                ax.plot(ys, label=m, marker=marker.next(), markersize=5)
+            # TODO why shouldn't there be ys?
+            if len(ys) > 0:
+                ymax = max(ymax, max(ys))
+                ymin = min(ymin, min(ys))
+                if times is not None:
+                    ax.plot(times, ys, label=m, marker=marker.next(), markersize=5)
+                else:
+                    ax.plot(ys, label=m, marker=marker.next(), markersize=5)
 
         # adaptively switch to log scale
         if ymax > ymin and ymin > 0.0:
@@ -764,10 +766,15 @@ def DirectoryW(val):
 re_out_file = re.compile(r'^([%@^][0-9]+)+:')
 def OutputFile(val):
     m = re_out_file.match(val)
-    if not m: raise argparse.ArgumentTypeError("`{0}' does not correspond to the output file path format".format(val))
-    tfm_and_num = val[m.start():m.end()-1]
+    # if not m: raise argparse.ArgumentTypeError("`{0}' does not correspond to the output file path format".format(val))
+    if m:
+        path = val[m.end():]
+        tfm_and_num = val[m.start():m.end()-1]
+    else:
+        # TODO maybe add info message
+        path = val
+        tfm_and_num = "^0"
 
-    path = val[m.end():]
     try:
         if path == "-":
             outfh = sys.stdout
