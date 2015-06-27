@@ -261,7 +261,11 @@ class MetaList(EqMixin):
 
     # get all columns where the given keywords have the respective values
     def get_columns(self, **kwargs):
-        return list(self.columns(**kwargs))
+        cols = list(self.columns(**kwargs))
+        # this assertion makes using this method's output as array index safer.
+        # TODO difference numpy index empty tuple vs. empty list
+        assert cols # didn't find any column matching the given selector
+        return cols
 
     def get_column(self, **kwargs):
         cols = self.get_columns(**kwargs)
@@ -271,21 +275,21 @@ class MetaList(EqMixin):
     def get_column_from(self, recs, **kwargs):
         return recs[:, self.get_column(**kwargs)]
 
+    def get_columns_from(self, recs, **kwargs):
+        return recs[:, self.get_columns(**kwargs)]
+
     def columns(self, **kwargs):
         for i, m in enumerate(self.ms):
-            match = True
             for k, v in kwargs.items():
                 a = getattr(m, k)
                 if isinstance(v, str):
                     if not fnmatchcase(a, v):
-                        match = False
                         break
                 elif a != v:
-                    match = False
                     break
-            if match:
+            else:
+                # yield only if match
                 yield i
-        return
 
     # record (prop_value, column_id) for each value of property prop
     # filtered by kwargs
