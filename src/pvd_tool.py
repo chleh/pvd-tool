@@ -815,10 +815,16 @@ def OutputFile(val):
 
 def OutputDir(val):
     m = re_out_file.match(val)
-    if not m: raise argparse.ArgumentTypeError("`{0}' does not correspond to the output file path format".format(val))
-    tfm_and_num = val[m.start():m.end()-1]
+    # if not m: raise argparse.ArgumentTypeError("`{0}' does not correspond to the output directory path format".format(val))
+    if m:
+        path = val[m.end():]
+        tfm_and_num = val[m.start():m.end()-1]
+    else:
+        # TODO maybe add info message
+        path = val
+        tfm_and_num = "^0"
 
-    path = os.path.expanduser(val[m.end():])
+    path = os.path.expanduser(path)
     d = os.path.dirname(path) or "."
     if not os.path.isdir(d):
         raise argparse.ArgumentTypeError("`{0}' is not a directory".format(d))
@@ -1017,6 +1023,15 @@ class FileFilterByTimestep:
             return True
 
 
+# split_re matches any number, possibly in scientific notation
+split_re = re.compile(r'([+-]?[0-9]+(?:[.][0-9]+)?(?:[eE][+-]?[0-9]+)?)')
+
+# returns a sorted version of the given list like `sort -V`
+def version_sort(in_files):
+    return sorted(in_files, key=lambda f: [
+        s if i%2==0 else float(s) for i, s in enumerate(split_re.split(f[1].name))
+        ])
+
 
 # TODO provide a similar function also for similar cases
 def process_timeseries_diff(args):
@@ -1032,6 +1047,8 @@ def process_timeseries_diff(args):
     globals()["vtk"] = vtk
 
     in_files = args.in_files
+    if args.version_sort:
+        in_files = version_sort(in_files)
 
     assert len(args.point) == 1 # currently only one point at once
 
@@ -1106,6 +1123,8 @@ def process_timeseries(args):
     check_consistency_ts(args)
 
     in_files = args.in_files
+    if args.version_sort:
+        in_files = version_sort(in_files)
 
     req_out = (args.out_csv or []) \
             + (args.out_plot or [])
@@ -1189,6 +1208,8 @@ def process_whole_domain(args):
     check_consistency_dom(args)
 
     in_files = args.in_files
+    if args.version_sort:
+        in_files = version_sort(in_files)
 
     req_out = (args.out_csv or []) \
             + (args.out_pvd or [])
@@ -1246,7 +1267,10 @@ def process_whole_domain(args):
 
                 if recs:
                     fn = "{0}_{1}.csv".format(outdirn, timesteps[num][ti])
-                    print(fn)
+                    if len(timesteps) == 1:
+                        print("csv output from {} to {}".format(in_files[ti][1].name, fn))
+                    else:
+                        print("csv output to {}".format(fn))
                     write_csv(meta, recs, fn, args.csv_prec[0], json_enc)
 
 
@@ -1315,6 +1339,7 @@ def _run_main():
     parser_io.add_argument("--no-combine-domains", action="store_false", dest="combine_domains", help="do not combine domains when aggregating several input files into one output file")
     parser_io.add_argument("--csv-prec", nargs=1, type=int, help="decimal precision for csv output", default=[6])
     parser_io.add_argument("--no-coords", action="store_false", dest="out_coords", help="do not output coordinate columns")
+    parser_io.add_argument("--version-sort-inputs", "-V", action="store_true", dest="version_sort", help="version sort input file names before further processing")
 
 
     subparsers = parser.add_subparsers(dest="subcommand", help="subcommands")
