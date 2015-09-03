@@ -126,6 +126,7 @@ def apply_script(fcts, timesteps, grids):
         ngrid = vtk.vtkUnstructuredGrid()
         ngrid.DeepCopy(grid)
 
+        # TODO extend for cells
         gridPoints = ngrid.GetPoints()
         numPt = gridPoints.GetNumberOfPoints()
 
@@ -327,8 +328,27 @@ def filter_grid_ts(src, grid, timestep, attrs, points_cells, incl_coords):
     attrIdcsCell = get_attribute_idcs(grid.GetCellData(), attrs)
     attrDataCell = [ grid.GetCellData().GetArray(i) for i, _ in attrIdcsCell ]
 
+    # TODO interpolate points given by indices and by coordinates
+
     npts = gridPoints.GetNumberOfPoints()
     ncells = gridCells.GetNumberOfCells()
+
+    interpPts = vtk.vtkPoints()
+    interpPts.InsertNextPoint(0.5, 0.5, 0.0)
+
+    interpData = vtk.vtkPolyData()
+    interpData.SetPoints(interpPts)
+
+    probeFilter = vtk.vtkProbeFilter()
+    probeFilter.SetSourceData(grid) # .GetPoints())
+    probeFilter.SetInputData(interpData)
+    probeFilter.Update()
+
+    result = probeFilter.GetOutput()
+    # print(result.GetNumberOfPoints())
+    # for i in range(result.GetNumberOfPoints()):
+    #     print(i, result.GetPoint(i), result.GetPointData().GetArray(0).GetTuple(i))
+
 
     if npts > 0:
         rec = []
@@ -890,18 +910,85 @@ class Cell:
     def get(self):
         return self.value
 
+    def flatten(self): return None
+
     def __str__(self):
-        return "cell {0}".format(self.value)
+        return "cell {}".format(self.value)
 
 class Point:
-    def __init__(self, i):
-        self.value = int(i)
+    def __init__(self, s):
+        self.index = -1
+        self.coords = []
+
+        if isinstance(s, basestring):
+            self.init_string(s)
+        else:
+            self.coords = [ list(s) ]
 
     def get(self):
-        return self.value
+        return self.index
 
     def __str__(self):
-        return "pt {0}".format(self.value)
+        return "pt {}".format(self.index)
+
+    def flatten(self):
+        if len(self.coords) <= 1: return None
+        
+        return [ Point(c) for c in self.coords ]
+
+    def init_string(self, s):
+        try:
+            index = int(s)
+            assert index >= 0
+            self.index = index
+        except ValueError:
+            parts = s.split("/")
+            if len(parts) == 1:
+                self.index = -1
+                self.coords = self.parse_coords(s)
+
+            elif len(parts) == 3:
+                self.index = -1
+                c1 = self.parse_coords(parts[0])
+                c2 = self.parse_coords(parts[2])
+                assert len(c1) == len(c2)
+
+                delta = parts[1].strip()
+                if delta[0] == '#':
+                    delta = int(delta[1:]) # delta is number of equally spaced points
+                    assert delta > 1
+                    for i in range(delta):
+                        t = float(i) / (delta-1)
+                        cs = list(c1)
+                        for ci in range(len(cs)):
+                            cs[ci] = (1.0 - t) * c1[ci] + t * c2[ci]
+                        self.coords.append(cs)
+
+                else:
+                    # make evenly distributed point with distance of delta
+                    delta = float(delta)
+                    assert delta > 0
+
+                    diff = math.sqrt(sum( (x1-x2)**2 for x1, x2 in zip(c1, c2) ))
+                    assert diff != 0
+
+                    i=0
+                    while i*delta < diff:
+                        t = i*delta/diff
+                        cs = list(c1)
+                        for ci in range(len(cs)):
+                            cs[ci] = (1.0 - t) * c1[ci] + t * c2[ci]
+                        self.coords.append(cs)
+
+                        i=i+1
+            else:
+                assert False # value has wrong format
+
+    @staticmethod
+    def parse_coords(s):
+        coords = [ float(p) for p in s.split(",") ]
+        assert len(coords) != 0 and len(coords) <= 3
+        return coords
 
 
 def check_consistency_ts(args):
@@ -1183,6 +1270,17 @@ def process_timeseries(args):
 
     check_consistency_ts(args)
 
+    # there shall be only single points or cells in the list
+    points_cells = []
+    for pc in args.points_cells:
+        pc_flat = pc.flatten()
+        if pc_flat:
+            points_cells.extend(pc_flat)
+        else:
+            points_cells.append(pc)
+    # print(args.points_cells)
+    # print(points_cells)
+
     in_files = args.in_files
     if args.version_sort:
         in_files = version_sort(in_files)
@@ -1215,7 +1313,7 @@ def process_timeseries(args):
                 else:
                     grids = vtuFiles[num]
 
-                recs, meta = get_timeseries(src, grids, tss, args.attr, args.points_cells, args.out_coords)
+                recs, meta = get_timeseries(src, grids, tss, args.attr, points_cells, args.out_coords)
                 if tfm_idx != 0:
                     for m in meta: m.tfm = True
                 aggr_data[num][tfm_idx] = (recs, meta)
