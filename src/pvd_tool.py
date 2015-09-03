@@ -67,7 +67,7 @@ class JsonSer(json.JSONEncoder):
             iterable = iter(o)
             return OrderedDict(iterable)
         except TypeError:
-            if isinstance(o, DoV):
+            if isinstance(o, (DoV, Point, Cell)):
                 return str(o)
 
         return json.JSONEncoder.default(self, o)
@@ -105,12 +105,13 @@ def get_attribute_idcs(fieldData, attrs):
     idcs = []
     for a in attrs:
         found = False
-        for i in xrange(fieldData.GetNumberOfArrays()):
+        num_arr = fieldData.GetNumberOfArrays()
+        for i in xrange(num_arr):
             n = fieldData.GetArray(i).GetName()
             if fnmatchcase(n, a):
                 idcs.append((i, n))
                 found = True
-        if not found: 
+        if num_arr != 0 and not found: 
             warn("Attribute %s not found" % a)
     return idcs
 
@@ -340,7 +341,7 @@ def filter_grid_ts(src, grid, timestep, attrs, points_cells, incl_coords):
             if isinstance(pc, Point):
                 p = pc.get()
                 if p >= npts or p < 0:
-                    warn("point %i out of bounds [0,%i]\n" % (p, npts-1))
+                    warn("{} out of bounds [0,{}]\n".format(pc, npts-1))
                     continue
 
                 # rec.append(p)
@@ -364,7 +365,7 @@ def filter_grid_ts(src, grid, timestep, attrs, points_cells, incl_coords):
             elif isinstance(pc, Cell):
                 c = pc.get()
                 if c >= ncells or c < 0:
-                    warn("point %i out of bounds [0,%i]\n" % (c, ncells-1))
+                    warn("{} out of bounds [0,{}]\n".format(pc, ncells-1))
                     continue
 
                 # rec.append(p)
@@ -904,6 +905,8 @@ class Point:
 
 
 def check_consistency_ts(args):
+    assert args.points_cells is not None and len(args.points_cells) != 0 # at least one point or cell must be chosen
+
     for nums_tfms, _ in args.out_csv or []:
         for num, tfm in nums_tfms:
             assert num < len(args.in_files)
@@ -1108,7 +1111,7 @@ def process_timeseries_diff(args):
     if args.version_sort:
         in_files = version_sort(in_files)
 
-    assert len(args.point) == 1 # currently only one point at once
+    assert len(args.points_cells) == 1 # currently only one point at once
 
     if args.out_csv:
         # output file uses both input files and not transforms
@@ -1147,7 +1150,7 @@ def process_timeseries_diff(args):
                     grids = vtuFiles[num]
 
                 # TODO find better solution for out_coords
-                recs, meta = get_timeseries(src, grids, tss, args.attr, args.point, args.out_coords)
+                recs, meta = get_timeseries(src, grids, tss, args.attr, args.points_cells, args.out_coords)
                 if tfm_idx != 0:
                     for m in meta: m.tfm = True
                 aggr_data[num][tfm_idx] = (recs, meta)
