@@ -868,34 +868,78 @@ def check_consistency_dom(args):
 
 
 def load_input_files(in_files, req_out, script_fh, script_params, filefilter=None):
+    assert len(in_files) > 0
+
+    # check that all input files are of the same type (either vtu or pvd)
+    input_type = None
+    for _, f in in_files:
+        if not f.name: continue
+        m = re.search(r'[.][^.]*$', f.name)
+        if m:
+            if input_type is None:
+                input_type = m.group(0)
+            elif input_type != m.group(0):
+                print("Error: You must not mix input files of different type!")
+                assert input_type == m.group(0)
+
     if script_fh is not None and isinstance(script_fh, list): script_fh = script_fh[0]
     reader = vtk.vtkXMLUnstructuredGridReader()
 
-    # check which resources are used
     timesteps = [ None for _ in range(len(in_files)) ]
     vtuFiles =  [ None for _ in range(len(in_files)) ]
     vtuFiles_transformed = [ None for _ in range(len(in_files)) ]
 
     scr_loaded = False
 
-    # load and, if necessary, transform source files
-    for nums_tfms, _ in req_out:
-        for num, tfm in nums_tfms:
-            if not vtuFiles[num]:
-                timesteps[num], vtuFiles[num] = gather_grids(in_files[num][1], reader, filefilter)
-            if tfm != 0:
-                assert script_fh is not None
-                if not scr_loaded:
-                    script_args = {}
-                    for kv in script_params:
-                        k, v = kv.split('=', 2)
-                        script_args[k] = v
+    if input_type == ".pvd":
+        timesteps = [ None for _ in range(len(in_files)) ]
+        vtuFiles =  [ None for _ in range(len(in_files)) ]
+        vtuFiles_transformed = [ None for _ in range(len(in_files)) ]
 
-                    analytical_model = imp.load_source("analytical_model", script_fh.name, script_fh)
-                    analytical_model.init(script_args)
-                    scr_loaded = True
-                if not vtuFiles_transformed[num]:
-                    vtuFiles_transformed[num] = apply_script(analytical_model.get_attribute_functions(), timesteps[num], vtuFiles[num])
+        # load and, if necessary, transform source files
+        for nums_tfms, _ in req_out:
+            for num, tfm in nums_tfms:
+                if not vtuFiles[num]:
+                    timesteps[num], vtuFiles[num] = gather_grids(in_files[num][1], reader, filefilter)
+                if tfm != 0:
+                    assert script_fh is not None
+                    if not scr_loaded:
+                        script_args = {}
+                        for kv in script_params:
+                            k, v = kv.split('=', 2)
+                            script_args[k] = v
+
+                        analytical_model = imp.load_source("analytical_model", script_fh.name, script_fh)
+                        analytical_model.init(script_args)
+                        scr_loaded = True
+                    if not vtuFiles_transformed[num]:
+                        vtuFiles_transformed[num] = apply_script(analytical_model.get_attribute_functions(), timesteps[num], vtuFiles[num])
+    elif input_type == ".vtu":
+        timesteps = [ [ None for _ in range(len(in_files)) ] ]
+        vtuFiles =  [ [ None for _ in range(len(in_files)) ] ]
+        vtuFiles_transformed = [ None ]
+
+        # load and, if necessary, transform source files
+        for nums_tfms, _ in req_out:
+            for num, tfm in nums_tfms:
+                assert num == 0
+                for fi, (_, in_file) in enumerate(in_files):
+                    _, vtu = gather_grids(in_file, reader, filefilter)
+                    timesteps[0][fi] = fi
+                    vtuFiles[0][fi]  = vtu[0]
+                if tfm != 0:
+                    assert script_fh is not None
+                    if not scr_loaded:
+                        script_args = {}
+                        for kv in script_params:
+                            k, v = kv.split('=', 2)
+                            script_args[k] = v
+
+                        analytical_model = imp.load_source("analytical_model", script_fh.name, script_fh)
+                        analytical_model.init(script_args)
+                        scr_loaded = True
+                    if not vtuFiles_transformed[0]:
+                        vtuFiles_transformed[0] = apply_script(analytical_model.get_attribute_functions(), timesteps[0], vtuFiles[0])
 
     return timesteps, vtuFiles, vtuFiles_transformed
 
@@ -1267,7 +1311,7 @@ def _run_main():
     # I/O
     parser_io = argparse.ArgumentParser(description="Input/output options", add_help=False)
 
-    parser_io.add_argument("-i", "--in", action="append", type=InputFile, required=True, help="input file", dest="in_files", metavar="IN_FILE")
+    parser_io.add_argument("-i", "--in", nargs='+', type=InputFile, required=True, help="input file", dest="in_files", metavar="IN_FILE")
     parser_io.add_argument("--no-combine-domains", action="store_false", dest="combine_domains", help="do not combine domains when aggregating several input files into one output file")
     parser_io.add_argument("--csv-prec", nargs=1, type=int, help="decimal precision for csv output", default=[6])
     parser_io.add_argument("--no-coords", action="store_false", dest="out_coords", help="do not output coordinate columns")
