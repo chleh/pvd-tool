@@ -380,7 +380,7 @@ def filter_grid_dom(src, grid, attrs):
         for ci in xrange(len(coords)):
             coord = coords[ci]
             rec.append(coord)
-            if first_loop: meta.append(Meta(DoV.DOM, src, "coord %i" % ci))
+            if first_loop: meta.append(Meta(src, DoV.DOM, "coord %i" % ci))
 
         for ai in xrange(len(attrData)):
             a = attrData[ai]
@@ -389,7 +389,7 @@ def filter_grid_dom(src, grid, attrs):
             for ci in xrange(len(comps)):
                 comp = comps[ci]
                 rec.append(comp)
-                if first_loop: meta.append(Meta(DoV.VAL, src, "%s[%i]" % (an, ci)))
+                if first_loop: meta.append(Meta(src, DoV.VAL, "%s[%i]" % (an, ci)))
 
         first_loop = False
         recs.append(rec)
@@ -633,14 +633,14 @@ def gather_files(infh):
         timesteps, files = getFilesTimes(pcdtree, pathroot)
     elif fn.endswith(".vtu"):
         timesteps = [0]
-        files = [ infh ]
+        files = [ fn ]
     else:
         die("File `%s' has unknown type" % fn)
 
     return timesteps, files
 
 
-def gather_grids(infh, reader):
+def gather_grids(infh, reader, filefilter):
     def get_grid(path):
         reader.SetFileName(path)
         reader.Update()
@@ -650,7 +650,12 @@ def gather_grids(infh, reader):
 
     timesteps, fs = gather_files(infh)
 
-    return timesteps, [ get_grid(f) for f in fs ]
+    grids = [ None ] * len(timesteps)
+    for i, (f, t) in enumerate(zip(fs, timesteps)):
+        if (not filefilter) or filefilter.filter(t, f):
+            grids[i] = get_grid(f)
+
+    return timesteps, grids
 
 
 def get_timeseries(src, grids, tss, attrs, points, incl_coords):
@@ -673,13 +678,16 @@ def get_point_data(src, grids, attrs):
     oldMeta = None
     records = []
 
-    for i in xrange(len(grids)):
-        recs, meta = filter_grid_dom(src, grids[i], attrs)
-        if oldMeta is None:
-            oldMeta = meta
+    for i, g in enumerate(grids):
+        if g:
+            recs, meta = filter_grid_dom(src, g, attrs)
+            if oldMeta is None:
+                oldMeta = meta
+            else:
+                assert meta == oldMeta
+            records.append(recs)
         else:
-            assert meta == oldMeta
-        records.append(recs)
+            records.append(())
 
     return records, meta
 
@@ -859,7 +867,7 @@ def check_consistency_dom(args):
             assert args.script or not tfm # if script is used, script must be given
 
 
-def load_input_files(in_files, req_out, script_fh, script_params):
+def load_input_files(in_files, req_out, script_fh, script_params, filefilter=None):
     if script_fh is not None and isinstance(script_fh, list): script_fh = script_fh[0]
     reader = vtk.vtkXMLUnstructuredGridReader()
 
@@ -874,7 +882,7 @@ def load_input_files(in_files, req_out, script_fh, script_params):
     for nums_tfms, _ in req_out:
         for num, tfm in nums_tfms:
             if not vtuFiles[num]:
-                timesteps[num], vtuFiles[num] = gather_grids(in_files[num][1], reader)
+                timesteps[num], vtuFiles[num] = gather_grids(in_files[num][1], reader, filefilter)
             if tfm != 0:
                 assert script_fh is not None
                 if not scr_loaded:
@@ -945,6 +953,25 @@ def get_output_data_diff(aggr_data, req_out):
         #     print("{} -- {}".format(attr, ", ".join([str(c) for c in cols])))
 
         yield meta, recs, outfh
+
+
+class FileFilterByTimestep:
+    def __init__(self, timesteps):
+        if timesteps:
+            self._timesteps = sorted([ float(t) for t in timesteps ])
+        else:
+            self._timesteps = None
+
+    def filter(self, ts, fn):
+        if self._timesteps:
+            for t in self._timesteps:
+                # print("ts vs t {} {} -- {} ?<? {}".format(ts, t, abs(ts-t), sys.float_info.epsilon))
+                if abs(ts-t) < sys.float_info.epsilon \
+                        or (ts != 0.0 and abs(ts-t)/ts < 1.e-6):
+                    return True
+        else:
+            return True
+
 
 
 # TODO provide a similar function also for similar cases
@@ -1109,7 +1136,7 @@ def process_timeseries(args):
 
 
 def process_whole_domain(args):
-    if not args.attr: args.attr = ['*']
+    if not args.attr:     args.attr = ['*']
 
     # has to be imported after matplotlib
     import vtk
@@ -1123,7 +1150,7 @@ def process_whole_domain(args):
             + (args.out_pvd or [])
 
     timesteps, vtuFiles, vtuFiles_transformed = \
-            load_input_files(in_files, req_out, args.script, args.script_param)
+            load_input_files(in_files, req_out, args.script, args.script_param, FileFilterByTimestep(args.timestep))
 
     # write csv files
     json_enc = JsonSer()
@@ -1173,8 +1200,10 @@ def process_whole_domain(args):
                 if args.combine_domains:
                     meta, recs = combine_domains(meta, recs)
 
-                fn = "{0}_{1}.csv".format(outdirn, timesteps[num][ti])
-                write_csv(meta, recs, fn, args.csv_prec[0], json_enc)
+                if recs:
+                    fn = "{0}_{1}.csv".format(outdirn, timesteps[num][ti])
+                    print(fn)
+                    write_csv(meta, recs, fn, args.csv_prec[0], json_enc)
 
 
     # write pvd files
@@ -1272,9 +1301,10 @@ def _run_main():
     # domain
     parser_dom = subparsers.add_parser("domain", help="dom help", parents=[parser_io, parser_common])
 
-    parser_dom.add_argument("--out-pvd",  action="append", type=OutputFile)
-    parser_dom.add_argument("--out-csv",  action="append", type=OutputDir)
-    parser_dom.add_argument("-a", "--attr",            action="append", required=False)
+    parser_dom.add_argument("--out-pvd",        action="append", type=OutputFile)
+    parser_dom.add_argument("--out-csv",        action="append", type=OutputDir)
+    parser_dom.add_argument("-a", "--attr",     action="append", required=False)
+    parser_dom.add_argument("-t", "--timestep", action="append", required=False)
 
     parser_dom.set_defaults(func=process_whole_domain)
 
