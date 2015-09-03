@@ -224,7 +224,7 @@ class Meta(EqMixin):
         if self.comp is not None:
             s += "[{0}]".format(self.comp)
         if self.pex is not None:
-            s += " at pt {0}".format(self.pex)
+            s += " at {0}".format(self.pex)
         if self.src is not None:
             if self.tfm:
                 s += " ({0}, transformed)".format(self.src)
@@ -316,13 +316,18 @@ class MetaList(EqMixin):
         self.ms.append(*args, **kwargs)
 
 
-def filter_grid_ts(src, grid, timestep, attrs, points, incl_coords):
+def filter_grid_ts(src, grid, timestep, attrs, points_cells, incl_coords):
     gridPoints = grid.GetPoints()
+    gridCells  = grid.GetCells()
 
-    attrIdcs = get_attribute_idcs(grid.GetPointData(), attrs)
-    attrData = [ grid.GetPointData().GetArray(i) for i, _ in attrIdcs ]
+    attrIdcsPt = get_attribute_idcs(grid.GetPointData(), attrs)
+    attrDataPt = [ grid.GetPointData().GetArray(i) for i, _ in attrIdcsPt ]
+
+    attrIdcsCell = get_attribute_idcs(grid.GetCellData(), attrs)
+    attrDataCell = [ grid.GetCellData().GetArray(i) for i, _ in attrIdcsCell ]
 
     npts = gridPoints.GetNumberOfPoints()
+    ncells = gridCells.GetNumberOfCells()
 
     if npts > 0:
         rec = []
@@ -331,29 +336,59 @@ def filter_grid_ts(src, grid, timestep, attrs, points, incl_coords):
         rec.append(timestep)
         meta.append(Meta(src, DoV.TIM, "time"))
 
-        for pi, p in enumerate(points):
-            if p >= npts or p < 0:
-                warn("point %i out of bounds [0,%i]\n" % (p, npts-1))
-                continue
+        for pi, pc in enumerate(points_cells):
+            if isinstance(pc, Point):
+                p = pc.get()
+                if p >= npts or p < 0:
+                    warn("point %i out of bounds [0,%i]\n" % (p, npts-1))
+                    continue
 
-            # rec.append(p)
-            # meta.append(Meta(src, DoV.DOM, "pt-id", None, pi))
+                # rec.append(p)
+                # meta.append(Meta(src, DoV.DOM, "pt-id", None, pi))
 
-            if incl_coords:
-                coords = gridPoints.GetPoint(p)
-                for ci in xrange(len(coords)):
-                    coord = coords[ci]
-                    rec.append(coord)
-                    meta.append(Meta(src, DoV.DOM, "coord", ci, p))
+                if incl_coords:
+                    coords = gridPoints.GetPoint(p)
+                    for ci in xrange(len(coords)):
+                        coord = coords[ci]
+                        rec.append(coord)
+                        meta.append(Meta(src, DoV.DOM, "coord", ci, pc))
 
-            for ai in xrange(len(attrData)):
-                a = attrData[ai]
-                an = attrIdcs[ai][1]
-                comps = a.GetTuple(p)
-                for ci in xrange(len(comps)):
-                    comp = comps[ci]
-                    rec.append(comp)
-                    meta.append(Meta(src, DoV.VAL, an, ci, p))
+                for ai in xrange(len(attrDataPt)):
+                    a = attrDataPt[ai]
+                    an = attrIdcsPt[ai][1]
+                    comps = a.GetTuple(p)
+                    for ci in xrange(len(comps)):
+                        comp = comps[ci]
+                        rec.append(comp)
+                        meta.append(Meta(src, DoV.VAL, an, ci, pc))
+            elif isinstance(pc, Cell):
+                c = pc.get()
+                if c >= ncells or c < 0:
+                    warn("point %i out of bounds [0,%i]\n" % (c, ncells-1))
+                    continue
+
+                # rec.append(p)
+                # meta.append(Meta(src, DoV.DOM, "pt-id", None, pi))
+
+                if incl_coords:
+                    coords = gridPoints.GetPoint(0)
+                    for ci in xrange(len(coords)):
+                        coord = 0.0
+                        rec.append(coord)
+                        meta.append(Meta(src, DoV.DOM, "coord", ci, pc))
+
+                for ai in xrange(len(attrDataCell)):
+                    a = attrDataCell[ai]
+                    an = attrIdcsCell[ai][1]
+                    comps = a.GetTuple(c)
+                    for ci in xrange(len(comps)):
+                        comp = comps[ci]
+                        rec.append(comp)
+                        meta.append(Meta(src, DoV.VAL, an, ci, pc))
+            else:
+                print("Error: Given object is neither point nor cell index")
+                assert False
+
 
         return rec, MetaList(meta)
     
@@ -747,6 +782,8 @@ def combine_domains(metas, recs):
     return nmetas, nrecs
 
 
+# argparse types
+
 def InputFile(val):
     parts = val.split(":", 2)
 
@@ -843,6 +880,27 @@ def OutputDir(val):
         nums_tfms.append((int(spl[i+1]), do_transform))
 
     return (nums_tfms, path)
+
+
+class Cell:
+    def __init__(self, i):
+        self.value = int(i)
+
+    def get(self):
+        return self.value
+
+    def __str__(self):
+        return "cell {0}".format(self.value)
+
+class Point:
+    def __init__(self, i):
+        self.value = int(i)
+
+    def get(self):
+        return self.value
+
+    def __str__(self):
+        return "pt {0}".format(self.value)
 
 
 def check_consistency_ts(args):
@@ -1154,7 +1212,7 @@ def process_timeseries(args):
                 else:
                     grids = vtuFiles[num]
 
-                recs, meta = get_timeseries(src, grids, tss, args.attr, args.point, args.out_coords)
+                recs, meta = get_timeseries(src, grids, tss, args.attr, args.points_cells, args.out_coords)
                 if tfm_idx != 0:
                     for m in meta: m.tfm = True
                 aggr_data[num][tfm_idx] = (recs, meta)
@@ -1347,7 +1405,8 @@ def _run_main():
 
 
     parser_frag_ts = argparse.ArgumentParser(description="compute timeseries", add_help=False)
-    parser_frag_ts.add_argument("-p", "--point", type=int, action="append", required=True)
+    parser_frag_ts.add_argument("-p", "--point", type=Point, action="append", required=False, dest="points_cells")
+    parser_frag_ts.add_argument("-c", "--cell",  type=Cell,  action="append", required=False, dest="points_cells")
     parser_frag_ts.add_argument("-a", "--attr",            action="append", required=False)
 
 
