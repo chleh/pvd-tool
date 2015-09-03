@@ -915,6 +915,7 @@ class Cell:
     def __str__(self):
         return "cell {}".format(self.value)
 
+# TODO add property "x-value"
 class Point:
     def __init__(self, s):
         self.index = -1
