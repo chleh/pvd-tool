@@ -47,6 +47,7 @@ from fnmatch import fnmatchcase
 
 import math
 
+import numbers
 import six
 
 
@@ -381,8 +382,6 @@ def filter_grid_ts(src, grid, timestep, attrs, points_cells, incl_coords):
     attrIdcsCell = get_attribute_idcs(grid.GetCellData(), attrs)
     attrDataCell = [ grid.GetCellData().GetArray(i) for i, _ in attrIdcsCell ]
 
-    # TODO interpolate points given by indices and by coordinates
-
     npts = gridPoints.GetNumberOfPoints()
     ncells = gridCells.GetNumberOfCells()
 
@@ -415,8 +414,6 @@ def filter_grid_ts(src, grid, timestep, attrs, points_cells, incl_coords):
             attrIdcsCoords = get_attribute_idcs(grid_interpolated.GetPointData(), attrs)
             attrDataCoords = [ grid_interpolated.GetPointData().GetArray(i) for i, _ in attrIdcsCoords ]
 
-
-
         rec = []
         meta = []
 
@@ -445,7 +442,92 @@ def filter_grid_ts(src, grid, timestep, attrs, points_cells, incl_coords):
     return None, None
 
 
-def filter_grid_dom(src, grid, attrs):
+def filter_grid_dom(src, grid, attrs, points_cells = None):
+    gridPoints = grid.GetPoints()
+    gridCells  = grid.GetCells()
+
+    attrIdcsPt = get_attribute_idcs(grid.GetPointData(), attrs)
+    attrDataPt = [ grid.GetPointData().GetArray(i) for i, _ in attrIdcsPt ]
+
+    attrIdcsCell = get_attribute_idcs(grid.GetCellData(), attrs)
+    attrDataCell = [ grid.GetCellData().GetArray(i) for i, _ in attrIdcsCell ]
+
+    npts = gridPoints.GetNumberOfPoints()
+    ncells = gridCells.GetNumberOfCells()
+
+    if points_cells is None:
+        points_cells = [ Point(i) for i in range(npts) ]
+
+    if (npts + ncells) > 0:
+        # categorize points: index or coordinates
+        coord_pts = []
+        map_point_indices = {} # maps point index in the list to point index in probeFilter
+
+        for i, point_cell in enumerate(points_cells):
+            if isinstance(point_cell, Point):
+                coords = point_cell.get_coords()
+                if coords:
+                    map_point_indices[i] = len(coord_pts)
+                    coord_pts.append(coords)
+
+        if coord_pts:
+            interpPts = vtk.vtkPoints()
+            for c in coord_pts:
+                interpPts.InsertNextPoint(*c)
+
+            interpData = vtk.vtkPolyData()
+            interpData.SetPoints(interpPts)
+
+            probeFilter = vtk.vtkProbeFilter()
+            probeFilter.SetSourceData(grid)
+            probeFilter.SetInputData(interpData)
+            probeFilter.Update()
+
+            grid_interpolated = probeFilter.GetOutput()
+            attrIdcsCoords = get_attribute_idcs(grid_interpolated.GetPointData(), attrs)
+            attrDataCoords = [ grid_interpolated.GetPointData().GetArray(i) for i, _ in attrIdcsCoords ]
+
+        recs = []
+        meta = []
+        meta.append(Meta(src, DoV.TIM, "point id"))
+
+        # rec.append(timestep)
+        # meta.append(Meta(src, DoV.TIM, "time"))
+
+        first_loop = True
+
+        for i, point_cell in enumerate(points_cells):
+            rec = [ i ]
+            tmp_meta = []
+            if isinstance(point_cell, Point):
+                if point_cell.get_coords():
+                    p = map_point_indices[i]
+                    get_point_data_from_grid(point_cell, p, grid_interpolated, src, attrIdcsCoords, attrDataCoords, True,
+                        rec, tmp_meta)
+                else:
+                    p = point_cell.get()
+                    get_point_data_from_grid(point_cell, p, grid, src, attrIdcsPt, attrDataPt, True,
+                        rec, tmp_meta)
+            elif isinstance(point_cell, Cell):
+                get_cell_data_from_grid(point_cell, grid, src, attrIdcsCell, attrDataCell, True,
+                        rec, tmp_meta)
+            else:
+                print("Error: Given object is neither point nor cell index")
+                assert False
+
+            if first_loop:
+                first_loop = False
+                meta.extend(tmp_meta)
+            recs.append(rec)
+
+        print("recs", recs)
+        print("meta", meta)
+
+        return recs, MetaList(meta)
+    
+    return None, None
+
+def filter_grid_dom_old(src, grid, attrs):
     gridPoints = grid.GetPoints()
 
     attrIdcs = get_attribute_idcs(grid.GetPointData(), attrs)
@@ -588,6 +670,10 @@ def _plot_to_file(meta, recs, outfh, style_cb=None):
     if isinstance(recs, list):
         recs = np.asarray(recs)
 
+    # try:
+    #     print("recs", recs)
+    #     iter(recs[0])
+    # except:
     if len(recs.shape) == 1:
         # make 2D column vector out of recs
         recs = np.expand_dims(recs, axis=1)
@@ -606,6 +692,8 @@ def _plot_to_file(meta, recs, outfh, style_cb=None):
             meta = [ Meta(None, DoV.VAL, "y") ]
 
     elif isinstance(meta, list) or isinstance(meta, MetaList):
+        print(meta)
+        print(recs)
         assert len(meta) == recs.shape[1]
 
         meta = list(meta) # make a copy
@@ -645,7 +733,10 @@ def _plot_to_file(meta, recs, outfh, style_cb=None):
     if recs.shape[1] == 1:
         xlabel = "n"
     else:
-        assert times is not None
+        times = [ i for i, _ in enumerate(recs) ]
+        print(recs)
+        print(times)
+        # assert times is not None
 
     nplots = len(meta_by_attr)
     height = 6 + 4*(nplots-1)
@@ -762,6 +853,7 @@ def get_timeseries(src, grids, tss, attrs, points, incl_coords):
 def get_point_data(src, grids, attrs):
     oldMeta = None
     records = []
+    meta = []
 
     for i, g in enumerate(grids):
         if g:
@@ -952,6 +1044,8 @@ class Point:
 
         if isinstance(s, basestring):
             self.init_string(s)
+        elif isinstance(s, numbers.Integral):
+            self.index = s
         else:
             self.coords = [ list(s) ]
 
@@ -1198,6 +1292,7 @@ class FileFilterByTimestep:
 
     def filter(self, ts, fn):
         if self._timesteps:
+            print(ts, self._timesteps)
             for t in self._timesteps:
                 # print("ts vs t {} {} -- {} ?<? {}".format(ts, t, abs(ts-t), sys.float_info.epsilon))
                 if abs(ts-t) < sys.float_info.epsilon \
@@ -1407,7 +1502,8 @@ def process_whole_domain(args):
         in_files = version_sort(in_files)
 
     req_out = (args.out_csv or []) \
-            + (args.out_pvd or [])
+            + (args.out_pvd or []) \
+            + (args.out_plot or [])
 
     timesteps, vtuFiles, vtuFiles_transformed = \
             load_input_files(in_files, req_out, args.script, args.script_param, FileFilterByTimestep(args.timestep))
@@ -1415,11 +1511,11 @@ def process_whole_domain(args):
     # write csv files
     json_enc = JsonSer()
 
-    if args.out_csv:
+    if args.out_csv or args.out_plot:
         # get data
         aggr_data = [ [ None, None ] for _ in range(len(in_files)) ]
 
-        for nums_tfms, outdirn in args.out_csv:
+        for nums_tfms, _ in (args.out_csv or []) + (args.out_plot or []):
             for num, tfm in nums_tfms:
                 src = in_files[num][0]
                 if src is None: src = in_files[num][1].name
@@ -1436,37 +1532,65 @@ def process_whole_domain(args):
                     else:
                         grids = vtuFiles[num]
 
+                    # TODO add switch cells/points
+                    # TODO enable point selection
                     recs, meta = get_point_data(src, grids, args.attr)
                     if tfm_idx != 0:
                         for m in meta: m.tfm = True
                     aggr_data[num][tfm_idx] = (recs, meta)
 
-        # write csv files
-        for nums_tfms, outdirn in args.out_csv:
-            for ti in range(len(timesteps[nums_tfms[0][0]])):
-                meta = []
-                recs = []
-                for num, tfm in nums_tfms:
-                    assert timesteps[num] == timesteps[nums_tfms[0][0]]
-                    if   tfm == 0: rng = [0]
-                    elif tfm == 1: rng = [1]
-                    elif tfm == 2: rng = [0,1]
-                    for tfm_idx in rng:
-                        r, m = aggr_data[num][tfm_idx]
-                        recs.append(r[ti])
-                        meta += m
-                recs = combine_arrays(recs)
+        if args.out_csv:
+            # write csv files
+            for nums_tfms, outdirn in args.out_csv:
+                for ti in range(len(timesteps[nums_tfms[0][0]])):
+                    meta = []
+                    recs = []
+                    for num, tfm in nums_tfms:
+                        assert timesteps[num] == timesteps[nums_tfms[0][0]]
+                        if   tfm == 0: rng = [0]
+                        elif tfm == 1: rng = [1]
+                        elif tfm == 2: rng = [0,1]
+                        for tfm_idx in rng:
+                            r, m = aggr_data[num][tfm_idx]
+                            recs.append(r[ti])
+                            meta += m
+                    recs = combine_arrays(recs)
 
-                if args.combine_domains:
-                    meta, recs = combine_domains(meta, recs)
+                    if args.combine_domains:
+                        meta, recs = combine_domains(meta, recs)
 
-                if recs:
-                    fn = "{0}_{1}.csv".format(outdirn, timesteps[num][ti])
-                    if len(timesteps) == 1:
-                        print("csv output from {} to {}".format(in_files[ti][1].name, fn))
-                    else:
-                        print("csv output to {}".format(fn))
-                    write_csv(meta, recs, fn, args.csv_prec[0], json_enc)
+                    if recs:
+                        fn = "{0}_{1}.csv".format(outdirn, timesteps[num][ti])
+                        if len(timesteps) == 1:
+                            print("csv output from {} to {}".format(in_files[ti][1].name, fn))
+                        else:
+                            print("csv output to {}".format(fn))
+                        write_csv(meta, recs, fn, args.csv_prec[0], json_enc)
+
+        if args.out_plot:
+            # plot
+            for nums_tfms, outfh in args.out_plot or []:
+                for ti in range(len(timesteps[nums_tfms[0][0]])):
+                    print("timestep ti", ti)
+                    meta = []
+                    recs = []
+                    for num, tfm in nums_tfms:
+                        assert timesteps[num] == timesteps[nums_tfms[0][0]]
+                        if   tfm == 0: rng = [0]
+                        elif tfm == 1: rng = [1]
+                        elif tfm == 2: rng = [0,1]
+                        for tfm_idx in rng:
+                            r, m = aggr_data[num][tfm_idx]
+                            # TODO: add x-axis value
+                            recs.append(r[ti])
+                            meta += m
+                    recs = combine_arrays(recs)
+
+                    if recs:
+                        plot_to_file(meta, recs, outfh)
+
+                        # TODO: allow for many timesteps
+                        break
 
 
     # write pvd files
@@ -1568,6 +1692,7 @@ def _run_main():
 
     parser_dom.add_argument("--out-pvd",        action="append", type=OutputFile)
     parser_dom.add_argument("--out-csv",        action="append", type=OutputDir)
+    parser_dom.add_argument("--out-plot",       action="append", type=OutputFile)
     parser_dom.add_argument("-a", "--attr",     action="append", required=False)
     parser_dom.add_argument("-t", "--timestep", action="append", required=False)
 
