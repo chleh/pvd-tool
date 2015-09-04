@@ -318,6 +318,59 @@ class MetaList(EqMixin):
         self.ms.append(*args, **kwargs)
 
 
+def get_point_data_from_grid(
+        point, point_id, grid, src, attrIdcs, attrData, incl_coords,
+        rec, meta
+        ):
+    gridPoints = grid.GetPoints()
+    npts = gridPoints.GetNumberOfPoints()
+    
+    if point_id >= npts or point_id < 0:
+        warn("point index {} out of bounds [0,{}]\n".format(point_id, npts-1))
+        return
+
+    if incl_coords:
+        coords = gridPoints.GetPoint(point_id)
+        for ci, coord in enumerate(coords):
+            rec.append(coord)
+            meta.append(Meta(src, DoV.DOM, "coord", ci, point))
+
+    for ai, a in enumerate(attrData):
+        an = attrIdcs[ai][1]
+        comps = a.GetTuple(point_id)
+        for ci, comp in enumerate(comps):
+            comp = comps[ci]
+            rec.append(comp)
+            meta.append(Meta(src, DoV.VAL, an, ci, point))
+
+def get_cell_data_from_grid(
+        cell, grid, src, attrIdcs, attrData, incl_coords,
+        rec, meta
+        ):
+    gridCells = grid.GetCells()
+    ncells = gridCells.GetNumberOfCells()
+    
+    c = cell.get()
+    if c >= ncells or c < 0:
+        warn("{} out of bounds [0,{}]\n".format(cell, ncells-1))
+        return
+
+    if incl_coords:
+        # add dummy coordinates
+        coords = grid.GetPoints().GetPoint(0)
+        for ci, _ in enumerate(coords):
+            rec.append(0.0)
+            meta.append(Meta(src, DoV.DOM, "coord", ci, cell))
+
+    for ai, a in enumerate(attrData):
+        an = attrIdcs[ai][1]
+        comps = a.GetTuple(c)
+        for ci, comp in enumerate(comps):
+            comp = comps[ci]
+            rec.append(comp)
+            meta.append(Meta(src, DoV.VAL, an, ci, cell))
+
+
 def filter_grid_ts(src, grid, timestep, attrs, points_cells, incl_coords):
     gridPoints = grid.GetPoints()
     gridCells  = grid.GetCells()
@@ -333,83 +386,59 @@ def filter_grid_ts(src, grid, timestep, attrs, points_cells, incl_coords):
     npts = gridPoints.GetNumberOfPoints()
     ncells = gridCells.GetNumberOfCells()
 
-    interpPts = vtk.vtkPoints()
-    interpPts.InsertNextPoint(0.5, 0.5, 0.0)
+    if (npts + ncells) > 0:
+        # categorize points: index or coordinates
+        coord_pts = []
+        map_point_indices = {} # maps point index in the list to point index in probeFilter
 
-    interpData = vtk.vtkPolyData()
-    interpData.SetPoints(interpPts)
+        for i, point_cell in enumerate(points_cells):
+            if isinstance(point_cell, Point):
+                coords = point_cell.get_coords()
+                if coords:
+                    map_point_indices[i] = len(coord_pts)
+                    coord_pts.append(coords)
 
-    probeFilter = vtk.vtkProbeFilter()
-    probeFilter.SetSourceData(grid) # .GetPoints())
-    probeFilter.SetInputData(interpData)
-    probeFilter.Update()
+        if coord_pts:
+            interpPts = vtk.vtkPoints()
+            for c in coord_pts:
+                interpPts.InsertNextPoint(*c)
 
-    result = probeFilter.GetOutput()
-    # print(result.GetNumberOfPoints())
-    # for i in range(result.GetNumberOfPoints()):
-    #     print(i, result.GetPoint(i), result.GetPointData().GetArray(0).GetTuple(i))
+            interpData = vtk.vtkPolyData()
+            interpData.SetPoints(interpPts)
+
+            probeFilter = vtk.vtkProbeFilter()
+            probeFilter.SetSourceData(grid)
+            probeFilter.SetInputData(interpData)
+            probeFilter.Update()
+
+            grid_interpolated = probeFilter.GetOutput()
+            attrIdcsCoords = get_attribute_idcs(grid_interpolated.GetPointData(), attrs)
+            attrDataCoords = [ grid_interpolated.GetPointData().GetArray(i) for i, _ in attrIdcsCoords ]
 
 
-    if npts > 0:
+
         rec = []
         meta = []
 
         rec.append(timestep)
         meta.append(Meta(src, DoV.TIM, "time"))
 
-        for pi, pc in enumerate(points_cells):
-            if isinstance(pc, Point):
-                p = pc.get()
-                if p >= npts or p < 0:
-                    warn("{} out of bounds [0,{}]\n".format(pc, npts-1))
-                    continue
-
-                # rec.append(p)
-                # meta.append(Meta(src, DoV.DOM, "pt-id", None, pi))
-
-                if incl_coords:
-                    coords = gridPoints.GetPoint(p)
-                    for ci in xrange(len(coords)):
-                        coord = coords[ci]
-                        rec.append(coord)
-                        meta.append(Meta(src, DoV.DOM, "coord", ci, pc))
-
-                for ai in xrange(len(attrDataPt)):
-                    a = attrDataPt[ai]
-                    an = attrIdcsPt[ai][1]
-                    comps = a.GetTuple(p)
-                    for ci in xrange(len(comps)):
-                        comp = comps[ci]
-                        rec.append(comp)
-                        meta.append(Meta(src, DoV.VAL, an, ci, pc))
-            elif isinstance(pc, Cell):
-                c = pc.get()
-                if c >= ncells or c < 0:
-                    warn("{} out of bounds [0,{}]\n".format(pc, ncells-1))
-                    continue
-
-                # rec.append(p)
-                # meta.append(Meta(src, DoV.DOM, "pt-id", None, pi))
-
-                if incl_coords:
-                    coords = gridPoints.GetPoint(0)
-                    for ci in xrange(len(coords)):
-                        coord = 0.0
-                        rec.append(coord)
-                        meta.append(Meta(src, DoV.DOM, "coord", ci, pc))
-
-                for ai in xrange(len(attrDataCell)):
-                    a = attrDataCell[ai]
-                    an = attrIdcsCell[ai][1]
-                    comps = a.GetTuple(c)
-                    for ci in xrange(len(comps)):
-                        comp = comps[ci]
-                        rec.append(comp)
-                        meta.append(Meta(src, DoV.VAL, an, ci, pc))
+        for i, point_cell in enumerate(points_cells):
+            if isinstance(point_cell, Point):
+                if point_cell.get_coords():
+                    p = map_point_indices[i]
+                    get_point_data_from_grid(point_cell, p, grid_interpolated, src, attrIdcsCoords, attrDataCoords, incl_coords,
+                        rec, meta)
+                else:
+                    p = point_cell.get()
+                    get_point_data_from_grid(point_cell, p, grid, src, attrIdcsPt, attrDataPt, incl_coords,
+                        rec, meta)
+            elif isinstance(point_cell, Cell):
+                get_cell_data_from_grid(point_cell, grid, src, attrIdcsCell, attrDataCell, incl_coords,
+                        rec, meta)
             else:
                 print("Error: Given object is neither point nor cell index")
                 assert False
-
 
         return rec, MetaList(meta)
     
@@ -929,8 +958,14 @@ class Point:
     def get(self):
         return self.index
 
+    def get_coords(self):
+        return self.coords
+
     def __str__(self):
-        return "pt {}".format(self.index)
+        if self.coords:
+            return "pt ({})".format(", ".join(str(x) for x in self.coords[0]))
+        else:
+            return "pt {}".format(self.index)
 
     def flatten(self):
         if len(self.coords) <= 1: return None
@@ -946,7 +981,7 @@ class Point:
             parts = s.split("/")
             if len(parts) == 1:
                 self.index = -1
-                self.coords = self.parse_coords(s)
+                self.coords = [ self.parse_coords(s) ]
 
             elif len(parts) == 3:
                 self.index = -1
