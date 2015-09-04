@@ -1580,17 +1580,17 @@ def process_whole_domain(args):
                         meta, recs = combine_domains(meta, recs)
 
                     if recs:
-                        t = timesteps[num][ti]
-                        if isinstance(t, numbers.Integral):
-                            max_ts = max(timesteps[num])
-                            width = len(str(max_ts))
-                            fn = ("{}_{:0"+str(width)+"}.csv").format(outdirn, t)
-                        else:
-                            fn = "{}_{}.png".format(outdirn, t)
-
                         if len(timesteps) == 1:
-                            print("csv output from {} to {}".format(in_files[ti][1].name, fn))
+                            fn = outdirn \
+                                    + re.sub(r"[.][^.]+$", ".csv", os.path.basename(in_files[ti][1].name))
                         else:
+                            t = timesteps[num][ti]
+                            if isinstance(t, numbers.Integral):
+                                max_ts = max(timesteps[num])
+                                width = len(str(max_ts))
+                                fn = ("{}_{:0"+str(width)+"}.csv").format(outdirn, t)
+                            else:
+                                fn = "{}_{}.csv".format(outdirn, t)
                             print("csv output to {}".format(fn))
                         write_csv(meta, recs, fn, args.csv_prec[0], json_enc)
 
@@ -1613,17 +1613,17 @@ def process_whole_domain(args):
                     recs = combine_arrays(recs)
 
                     if recs:
-                        t = timesteps[num][ti]
-                        if isinstance(t, numbers.Integral):
-                            max_ts = max(timesteps[num])
-                            width = len(str(max_ts))
-                            fn = ("{}_{:0"+str(width)+"}.png").format(outdirn, t)
-                        else:
-                            fn = "{}_{}.png".format(outdirn, t)
-
                         if len(timesteps) == 1:
-                            print("plot output from {} to {}".format(in_files[ti][1].name, fn))
+                            fn = outdirn \
+                                    + re.sub(r"[.][^.]+$", ".png", os.path.basename(in_files[ti][1].name))
                         else:
+                            t = timesteps[num][ti]
+                            if isinstance(t, numbers.Integral):
+                                max_ts = max(timesteps[num])
+                                width = len(str(max_ts))
+                                fn = ("{}_{:0"+str(width)+"}.png").format(outdirn, t)
+                            else:
+                                fn = "{}_{}.png".format(outdirn, t)
                             print("plot output to {}".format(fn))
                         plot_to_file(meta, recs, fn)
 
