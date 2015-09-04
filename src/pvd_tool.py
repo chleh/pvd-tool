@@ -181,7 +181,7 @@ DoV.VAL = DoV(DoV.VAL)
 
 
 # check objects for equality in a generic way
-class EqMixin:
+class EqMixin(object):
     def __eq__(self, other):
         return type(other) is type(self) and self.__dict__ == other.__dict__
 
@@ -1017,7 +1017,7 @@ def OutputDir(val):
     return (nums_tfms, path)
 
 
-class Cell(object):
+class Cell(EqMixin):
     def __init__(self, i):
         self.value = int(i)
 
@@ -1032,7 +1032,7 @@ class Cell(object):
         return "cell {}".format(self.value)
 
 # TODO add property "x-value"
-class Point(object):
+class Point(EqMixin):
     def __init__(self, s, x_value=None):
         self.index = -1
         self.coords = []
