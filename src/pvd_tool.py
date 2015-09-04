@@ -491,9 +491,6 @@ def filter_grid_dom(src, grid, attrs, points_cells = None):
         meta = []
         meta.append(Meta(src, DoV.TIM, "point id"))
 
-        # rec.append(timestep)
-        # meta.append(Meta(src, DoV.TIM, "time"))
-
         first_loop = True
 
         for i, point_cell in enumerate(points_cells):
@@ -519,9 +516,6 @@ def filter_grid_dom(src, grid, attrs, points_cells = None):
                 first_loop = False
                 meta.extend(tmp_meta)
             recs.append(rec)
-
-        print("recs", recs)
-        print("meta", meta)
 
         return recs, MetaList(meta)
     
@@ -692,8 +686,6 @@ def _plot_to_file(meta, recs, outfh, style_cb=None):
             meta = [ Meta(None, DoV.VAL, "y") ]
 
     elif isinstance(meta, list) or isinstance(meta, MetaList):
-        print(meta)
-        print(recs)
         assert len(meta) == recs.shape[1]
 
         meta = list(meta) # make a copy
@@ -733,10 +725,8 @@ def _plot_to_file(meta, recs, outfh, style_cb=None):
     if recs.shape[1] == 1:
         xlabel = "n"
     else:
-        times = [ i for i, _ in enumerate(recs) ]
-        print(recs)
-        print(times)
-        # assert times is not None
+        # times = [ i for i, _ in enumerate(recs) ]
+        assert times is not None
 
     nplots = len(meta_by_attr)
     height = 6 + 4*(nplots-1)
@@ -850,14 +840,14 @@ def get_timeseries(src, grids, tss, attrs, points, incl_coords):
     return records, oldMeta
 
 
-def get_point_data(src, grids, attrs):
+def get_point_data(src, grids, attrs, points_cells):
     oldMeta = None
     records = []
     meta = []
 
     for i, g in enumerate(grids):
         if g:
-            recs, meta = filter_grid_dom(src, g, attrs)
+            recs, meta = filter_grid_dom(src, g, attrs, points_cells)
             if oldMeta is None:
                 oldMeta = meta
             else:
@@ -1292,7 +1282,6 @@ class FileFilterByTimestep:
 
     def filter(self, ts, fn):
         if self._timesteps:
-            print(ts, self._timesteps)
             for t in self._timesteps:
                 # print("ts vs t {} {} -- {} ?<? {}".format(ts, t, abs(ts-t), sys.float_info.epsilon))
                 if abs(ts-t) < sys.float_info.epsilon \
@@ -1409,8 +1398,6 @@ def process_timeseries(args):
             points_cells.extend(pc_flat)
         else:
             points_cells.append(pc)
-    # print(args.points_cells)
-    # print(points_cells)
 
     in_files = args.in_files
     if args.version_sort:
@@ -1497,6 +1484,18 @@ def process_whole_domain(args):
 
     check_consistency_dom(args)
 
+    if args.points_cells:
+        # there shall be only single points or cells in the list
+        points_cells = []
+        for pc in args.points_cells:
+            pc_flat = pc.flatten()
+            if pc_flat:
+                points_cells.extend(pc_flat)
+            else:
+                points_cells.append(pc)
+    else:
+        points_cells = None
+
     in_files = args.in_files
     if args.version_sort:
         in_files = version_sort(in_files)
@@ -1533,8 +1532,7 @@ def process_whole_domain(args):
                         grids = vtuFiles[num]
 
                     # TODO add switch cells/points
-                    # TODO enable point selection
-                    recs, meta = get_point_data(src, grids, args.attr)
+                    recs, meta = get_point_data(src, grids, args.attr, points_cells)
                     if tfm_idx != 0:
                         for m in meta: m.tfm = True
                     aggr_data[num][tfm_idx] = (recs, meta)
@@ -1571,7 +1569,6 @@ def process_whole_domain(args):
             # plot
             for nums_tfms, outfh in args.out_plot or []:
                 for ti in range(len(timesteps[nums_tfms[0][0]])):
-                    print("timestep ti", ti)
                     meta = []
                     recs = []
                     for num, tfm in nums_tfms:
@@ -1688,12 +1685,12 @@ def _run_main():
 
 
     # domain
-    parser_dom = subparsers.add_parser("domain", help="dom help", parents=[parser_io, parser_common])
+    parser_dom = subparsers.add_parser("domain", help="dom help", parents=[parser_io, parser_common, parser_frag_ts])
 
     parser_dom.add_argument("--out-pvd",        action="append", type=OutputFile)
     parser_dom.add_argument("--out-csv",        action="append", type=OutputDir)
     parser_dom.add_argument("--out-plot",       action="append", type=OutputFile)
-    parser_dom.add_argument("-a", "--attr",     action="append", required=False)
+    # parser_dom.add_argument("-a", "--attr",     action="append", required=False)
     parser_dom.add_argument("-t", "--timestep", action="append", required=False)
 
     parser_dom.set_defaults(func=process_whole_domain)
