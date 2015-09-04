@@ -489,12 +489,14 @@ def filter_grid_dom(src, grid, attrs, points_cells = None):
 
         recs = []
         meta = []
-        meta.append(Meta(src, DoV.TIM, "point id"))
+        meta.append(Meta(src, DoV.TIM, "ordinal number or dist from first point"))
 
         first_loop = True
 
         for i, point_cell in enumerate(points_cells):
-            rec = [ i ]
+            x = point_cell.get_x_value()
+            if x is None: x = i
+            rec = [ x ]
             tmp_meta = []
             if isinstance(point_cell, Point):
                 if point_cell.get_coords():
@@ -1014,7 +1016,7 @@ def OutputDir(val):
     return (nums_tfms, path)
 
 
-class Cell:
+class Cell(object):
     def __init__(self, i):
         self.value = int(i)
 
@@ -1023,14 +1025,17 @@ class Cell:
 
     def flatten(self): return None
 
+    def get_x_value(self): return None
+
     def __str__(self):
         return "cell {}".format(self.value)
 
 # TODO add property "x-value"
-class Point:
-    def __init__(self, s):
+class Point(object):
+    def __init__(self, s, x_value=None):
         self.index = -1
         self.coords = []
+        self.x_values = [ x_value ]
 
         if isinstance(s, basestring):
             self.init_string(s)
@@ -1045,6 +1050,9 @@ class Point:
     def get_coords(self):
         return self.coords
 
+    def get_x_value(self):
+        return self.x_values[0]
+
     def __str__(self):
         if self.coords:
             return "pt ({})".format(", ".join(str(x) for x in self.coords[0]))
@@ -1054,7 +1062,7 @@ class Point:
     def flatten(self):
         if len(self.coords) <= 1: return None
         
-        return [ Point(c) for c in self.coords ]
+        return [ Point(c, x) for c, x in zip(self.coords, self.x_values) ]
 
     def init_string(self, s):
         try:
@@ -1073,6 +1081,12 @@ class Point:
                 c2 = self.parse_coords(parts[2])
                 assert len(c1) == len(c2)
 
+                diff = math.sqrt(sum( (x1-x2)**2 for x1, x2 in zip(c1, c2) ))
+                assert diff != 0
+
+                self.coords = []
+                self.x_values = []
+
                 delta = parts[1].strip()
                 if delta[0] == '#':
                     delta = int(delta[1:]) # delta is number of equally spaced points
@@ -1083,14 +1097,12 @@ class Point:
                         for ci in range(len(cs)):
                             cs[ci] = (1.0 - t) * c1[ci] + t * c2[ci]
                         self.coords.append(cs)
+                        self.x_values.append(diff*t)
 
                 else:
                     # make evenly distributed point with distance of delta
                     delta = float(delta)
                     assert delta > 0
-
-                    diff = math.sqrt(sum( (x1-x2)**2 for x1, x2 in zip(c1, c2) ))
-                    assert diff != 0
 
                     i=0
                     while i*delta < diff:
@@ -1099,6 +1111,7 @@ class Point:
                         for ci in range(len(cs)):
                             cs[ci] = (1.0 - t) * c1[ci] + t * c2[ci]
                         self.coords.append(cs)
+                        self.x_values.append(i*delta)
 
                         i=i+1
             else:
@@ -1127,6 +1140,14 @@ def check_consistency_ts(args):
 
 def check_consistency_dom(args):
     # assert (not args.out_pvd) != (not args.attr)
+    
+    if args.points_cells:
+        t = None
+        for pc in args.points_cells:
+            if t is not None:
+                assert type(pc) is t # either only points or only cells are allowed
+            else:
+                t = type(pc)
 
     for nums_tfms, _ in args.out_csv or []:
         # assert len(nums_tfms) == 1 # currently no combination of whole grids allowed
