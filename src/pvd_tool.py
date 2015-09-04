@@ -787,6 +787,7 @@ def _plot_to_file(meta, recs, outfh, style_cb=None):
     else:
         fmt = os.path.basename(outfh.name).split(".")[-1]
         fig.savefig(outfh, format=fmt)
+    plt.close(fig)
 
 
 def gather_files(infh):
@@ -1579,7 +1580,14 @@ def process_whole_domain(args):
                         meta, recs = combine_domains(meta, recs)
 
                     if recs:
-                        fn = "{0}_{1}.csv".format(outdirn, timesteps[num][ti])
+                        t = timesteps[num][ti]
+                        if isinstance(t, numbers.Integral):
+                            max_ts = max(timesteps[num])
+                            width = len(str(max_ts))
+                            fn = ("{}_{:0"+str(width)+"}.csv").format(outdirn, t)
+                        else:
+                            fn = "{}_{}.png".format(outdirn, t)
+
                         if len(timesteps) == 1:
                             print("csv output from {} to {}".format(in_files[ti][1].name, fn))
                         else:
@@ -1588,7 +1596,7 @@ def process_whole_domain(args):
 
         if args.out_plot:
             # plot
-            for nums_tfms, outfh in args.out_plot or []:
+            for nums_tfms, outdirn in args.out_plot or []:
                 for ti in range(len(timesteps[nums_tfms[0][0]])):
                     meta = []
                     recs = []
@@ -1605,10 +1613,19 @@ def process_whole_domain(args):
                     recs = combine_arrays(recs)
 
                     if recs:
-                        plot_to_file(meta, recs, outfh)
+                        t = timesteps[num][ti]
+                        if isinstance(t, numbers.Integral):
+                            max_ts = max(timesteps[num])
+                            width = len(str(max_ts))
+                            fn = ("{}_{:0"+str(width)+"}.png").format(outdirn, t)
+                        else:
+                            fn = "{}_{}.png".format(outdirn, t)
 
-                        # TODO: allow for many timesteps
-                        break
+                        if len(timesteps) == 1:
+                            print("plot output from {} to {}".format(in_files[ti][1].name, fn))
+                        else:
+                            print("plot output to {}".format(fn))
+                        plot_to_file(meta, recs, fn)
 
 
     # write pvd files
@@ -1710,8 +1727,7 @@ def _run_main():
 
     parser_dom.add_argument("--out-pvd",        action="append", type=OutputFile)
     parser_dom.add_argument("--out-csv",        action="append", type=OutputDir)
-    parser_dom.add_argument("--out-plot",       action="append", type=OutputFile)
-    # parser_dom.add_argument("-a", "--attr",     action="append", required=False)
+    parser_dom.add_argument("--out-plot",       action="append", type=OutputDir)
     parser_dom.add_argument("-t", "--timestep", action="append", required=False)
 
     parser_dom.set_defaults(func=process_whole_domain)
