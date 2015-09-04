@@ -112,8 +112,8 @@ def get_attribute_idcs(fieldData, attrs):
             if fnmatchcase(n, a):
                 idcs.append((i, n))
                 found = True
-        if num_arr != 0 and not found: 
-            warn("Attribute %s not found" % a)
+        # if num_arr != 0 and not found:
+        #     warn("Attribute %s not found" % a)
     return idcs
 
 
