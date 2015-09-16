@@ -1619,7 +1619,7 @@ def process_whole_domain(args):
                     if recs:
                         if len(timesteps) == 1:
                             fn = outdirn \
-                                    + re.sub(r"[.][^.]+$", ".csv", os.path.basename(in_files[ti][1].name))
+                                    + re.sub(r"[.][^.]+$", ".csv", os.path.basename(in_files[ti][1]))
                         else:
                             t = timesteps[num][ti]
                             if isinstance(t, numbers.Integral):
