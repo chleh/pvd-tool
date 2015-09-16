@@ -944,7 +944,9 @@ def InputFile(val):
             if parts[1] == "-":
                 fh = sys.stdin
             else:
-                fh = open(os.path.expanduser(parts[1]), "r")
+                path = os.path.expanduser(parts[1])
+                assert os.path.isfile(path) and os.access(path, os.R_OK)
+                fh = path
         except IOError:
             warn("Warning: Could not open `{0}', will try `{1}' instead".format(parts[1], val))
         else:
@@ -954,7 +956,9 @@ def InputFile(val):
         if val == "-":
             fh = sys.stdin
         else:
-            fh = open(os.path.expanduser(val), "r")
+            path = os.path.expanduser(val)
+            assert os.path.isfile(path) and os.access(path, os.R_OK)
+            fh = path
     except IOError as e:
         raise argparse.ArgumentTypeError("I/O error({0}) when trying to open `{2}': {1}".format(e.errno, e.strerror, val))
     return None, fh
@@ -964,6 +968,16 @@ def DirectoryW(val):
     # TODO implement
     return val
 
+
+def InputFileArgument(path):
+    path = os.path.expanduser(path)
+    assert os.path.isfile(path) and os.access(path, os.R_OK)
+    return path
+
+def OutputFileArgument(path):
+    path = os.path.expanduser(path)
+    assert os.path.isfile(path) and os.access(path, os.W_OK)
+    return path
 
 re_out_file = re.compile(r'^([%@^][0-9]+)+:')
 def OutputFile(val):
@@ -981,7 +995,9 @@ def OutputFile(val):
         if path == "-":
             outfh = sys.stdout
         else:
-            outfh = open(os.path.expanduser(path), "w")
+            path = os.path.expanduser(path)
+            assert os.path.isfile(path) and os.access(path, os.W_OK)
+            outfh = path
     except IOError as e:
         raise argparse.ArgumentTypeError("I/O error({0}) when trying to open `{2}': {1}".format(e.errno, e.strerror, path))
 
@@ -1186,8 +1202,9 @@ def load_input_files(in_files, req_out, script_fh, script_params, filefilter=Non
     # check that all input files are of the same type (either vtu or pvd)
     input_type = None
     for _, f in in_files:
-        if not f.name: continue
-        m = re.search(r'[.][^.]*$', f.name)
+        path = f if isinstance(f, six.string_types) else f.name
+        if not path: continue
+        m = re.search(r'[.][^.]*$', path)
         if m:
             if input_type is None:
                 input_type = m.group(0)
@@ -1336,7 +1353,10 @@ split_re = re.compile(r'([+-]?[0-9]+(?:[.][0-9]+)?(?:[eE][+-]?[0-9]+)?)')
 # returns a sorted version of the given list like `sort -V`
 def version_sort(in_files):
     return sorted(in_files, key=lambda f: [
-        s if i%2==0 else float(s) for i, s in enumerate(split_re.split(f[1].name))
+        s if i%2==0 else float(s)
+        for i, s in enumerate(split_re.split(
+            f[1] if isinstance(f[1], six.string_types) else f[1].name
+            ))
         ])
 
 
@@ -1556,7 +1576,7 @@ def process_whole_domain(args):
         for nums_tfms, _ in (args.out_csv or []) + (args.out_plot or []):
             for num, tfm in nums_tfms:
                 src = in_files[num][0]
-                if src is None: src = in_files[num][1].name
+                if src is None: src = in_files[num][1]
 
                 if   tfm == 0: rng = [0]
                 elif tfm == 1: rng = [1]
@@ -1632,7 +1652,7 @@ def process_whole_domain(args):
                     if recs:
                         if len(timesteps) == 1:
                             fn = outdirn \
-                                    + re.sub(r"[.][^.]+$", ".png", os.path.basename(in_files[ti][1].name))
+                                    + re.sub(r"[.][^.]+$", ".png", os.path.basename(in_files[ti][1]))
                         else:
                             t = timesteps[num][ti]
                             if isinstance(t, numbers.Integral):
@@ -1700,7 +1720,7 @@ def _run_main():
     # common
     parser_common = argparse.ArgumentParser(description="Common options", add_help=False)
 
-    parser_common.add_argument("-s", "--script", nargs=1,     type=argparse.FileType("r"), help="script for generating field data, e.g., exact solutions of FEM models")
+    parser_common.add_argument("-s", "--script", nargs=1,     type=InputFileArgument, help="script for generating field data, e.g., exact solutions of FEM models")
     parser_common.add_argument("--script-param", "--sp", action="append", help="parameters for the script", default=[])
 
     # I/O
@@ -1733,8 +1753,8 @@ def _run_main():
     # timeseries diff
     parser_tsd = subparsers.add_parser("ts-diff", help="compute differences between two timeseries", parents=[parser_frag_ts])
     parser_tsd.add_argument("-i", "--in", nargs=2, type=InputFile, required=True, help="input file", dest="in_files", metavar="IN_FILE")
-    parser_tsd.add_argument("--out-plot", nargs=1, type=argparse.FileType("w"))
-    parser_tsd.add_argument("--out-csv",  nargs=1, type=argparse.FileType("w"))
+    parser_tsd.add_argument("--out-plot", nargs=1, type=OutputFileArgument)
+    parser_tsd.add_argument("--out-csv",  nargs=1, type=OutputFileArgument)
     parser_tsd.add_argument("--csv-prec", nargs=1, type=int, help="decimal precision for csv output", default=[6])
     parser_tsd.set_defaults(func=process_timeseries_diff)
 
@@ -1752,8 +1772,8 @@ def _run_main():
 
     # proxy
     parser_proxy = subparsers.add_parser("proxy", help="proxy help", parents=[parser_common])
-    parser_proxy.add_argument("-i", "--in", action="append", type=argparse.FileType("r"), help="input file", dest="in_files", metavar="IN_FILE", default=[])
-    parser_proxy.add_argument("-o", "--out", action="append", type=argparse.FileType("w"), help="output file", dest="out_files", metavar="OUT_FILE", default=[])
+    parser_proxy.add_argument("-i", "--in", action="append", type=InputFileArgument, help="input file", dest="in_files", metavar="IN_FILE", default=[])
+    parser_proxy.add_argument("-o", "--out", action="append", type=OutputFileArgument, help="output file", dest="out_files", metavar="OUT_FILE", default=[])
     parser_proxy.set_defaults(func=process_proxy)
     
 
