@@ -576,6 +576,7 @@ def write_pvd(outfh, timesteps, vtus):
 
 def write_csv(meta, records, outFile, precision, json_enc):
     header = "Columns:\n"
+    header2 = "\n"
 
     nc = len(meta)
     header += "[\n"
@@ -594,9 +595,25 @@ def write_csv(meta, records, outFile, precision, json_enc):
 
         old_meta = meta[i]
 
-    header += "]\n"
+        # if i == 0:
+        #     header2 += "{{:>{}}}".format(precision+5).format(meta[i].attr)
+        # else:
+        if i != 0:
+            header2 += " "
+            colwidth = precision + 7
+        else:
+            colwidth = precision + 5
+        attr = meta[i].attr
+        if len(attr) > colwidth:
+            attr = attr[:colwidth-2] + ".."
+        header2 += "{{:>{}}}".format(colwidth).format(attr)
 
-    np.savetxt(outFile, records, delimiter="\t", fmt="%.{0}g".format(precision), header=header)
+    header += "]\n" + header2
+
+    np.savetxt(outFile, records,
+            delimiter=" ",
+            fmt="%{}.{}g".format(precision+7, precision),
+            header=header)
 
 
 def read_csv(fh, parse_header=True):
