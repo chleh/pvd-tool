@@ -1020,8 +1020,9 @@ def process_timeseries_diff(args):
             write_csv(meta, recs, outfh, args.csv_prec[0], json_enc)
 
     if args.out_plot:
+        plt = plot.Plot()
         for meta, recs, outfh in get_output_data_diff(aggr_data, args.out_plot):
-            plot.plot_to_file(meta, recs, outfh)
+            plt.plot_to_file(meta, recs, outfh)
 
 
 
@@ -1108,6 +1109,7 @@ def process_timeseries(args):
 
 
     # plot
+    plt = plot.Plot()
     for nums_tfms, outfh in args.out_plot or []:
         meta = []
         recs = []
@@ -1121,7 +1123,7 @@ def process_timeseries(args):
                 meta += m
         recs = combine_arrays(recs)
 
-        plot.plot_to_file(meta, recs, outfh)
+        plt.plot_to_file(meta, recs, outfh)
 
 
 def process_whole_domain(args):
@@ -1223,6 +1225,7 @@ def process_whole_domain(args):
 
         if args.out_plot:
             # plot
+            plt = plot.Plot()
             for nums_tfms, outdirn in args.out_plot or []:
                 for ti in range(len(timesteps[nums_tfms[0][0]])):
                     meta = []
@@ -1252,7 +1255,7 @@ def process_whole_domain(args):
                             else:
                                 fn = "{}_{}.png".format(outdirn, t)
                             print("plot output to {}".format(fn))
-                        plot.plot_to_file(meta, recs, fn)
+                        plt.plot_to_file(meta, recs, fn)
 
 
     # write pvd files
