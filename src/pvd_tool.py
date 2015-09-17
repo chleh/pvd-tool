@@ -1255,7 +1255,8 @@ def process_whole_domain(args):
                             else:
                                 fn = "{}_{}.png".format(outdirn, t)
                             print("plot output to {}".format(fn))
-                        plt.plot_to_file(meta, recs, fn)
+                        plt.add_data(meta, recs, fn)
+            plt.do_plots()
 
 
     # write pvd files

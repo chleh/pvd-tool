@@ -17,6 +17,11 @@ class Plot:
     def __init__(self):
         self._series = []
         self._fig = None
+        self._plot_xdata_by_file_and_series = []
+        self._plot_ydata_by_file_and_series = []
+        self._labels_by_series = []
+        self._output_files = []
+        self._axis_ids = []
 
     def plot_to_file(self, *args):
         self._plot_to_file(*args)
@@ -46,16 +51,14 @@ class Plot:
                 left=.1, right=.7)
 
 
-    def _plot_to_file(self, meta, recs, outfh, style_cb=None):
+    def add_data(self, meta, recs, outfn):
         start_time = time.clock()
+
+        self._output_files.append(outfn)
 
         if isinstance(recs, list):
             recs = np.asarray(recs)
 
-        # try:
-        #     print("recs", recs)
-        #     iter(recs[0])
-        # except:
         if len(recs.shape) == 1:
             # make 2D column vector out of recs
             recs = np.expand_dims(recs, axis=1)
@@ -116,22 +119,24 @@ class Plot:
             # times = [ i for i, _ in enumerate(recs) ]
             assert times is not None
 
-        only_update_data = not not self._series
+        self._xlabel = xlabel
+        self._meta_by_attr = meta_by_attr
 
+        only_update_data = not not self._labels_by_series
         if not only_update_data:
             nplots = len(meta_by_attr)
-            self._init(nplots, xlabel)
-
-        markers = [ 'x', '+' ]
+            self._ymins = [ float("+inf") for i in range(nplots) ]
+            self._ymaxs = [ float("-inf") for i in range(nplots) ]
 
         series_id = 0
+        plot_xdata_by_series = []
+        plot_ydata_by_series = []
+        self._plot_xdata_by_file_and_series.append(plot_xdata_by_series)
+        self._plot_ydata_by_file_and_series.append(plot_ydata_by_series)
 
-        for ax, am in zip(self._axes, sorted(meta_by_attr.items())):
+        for ax_id, am in enumerate(sorted(meta_by_attr.items())):
             attr = am[0]
             metas = am[1]
-            if style_cb is not None: style_cb(plt, ax)
-
-            marker = itertools.cycle(markers)
 
             ymax = float("-inf")
             ymin = float("inf")
@@ -143,54 +148,96 @@ class Plot:
                     ymin = min(ymin, min(ys))
 
                     if times is not None:
-                        # no markers if more than 50 data points
-                        ma = marker.next() if len(times) <= 50 else None
-                        if only_update_data:
-                            assert len(self._series) > series_id
-                            ser = self._series[series_id]
-                            ser.set_xdata(times)
-                            ser.set_ydata(ys)
-                        else:
-                            assert series_id == len(self._series)
-                            self._series.append(ax.plot(times, ys, label=m, marker=ma, markersize=5)[0])
+                        plot_xdata_by_series.append(times)
                     else:
-                        # no markers if more than 50 data points
-                        ma = marker.next() if len(ys) <= 50 else None
-                        if only_update_data:
-                            assert len(self._series) > series_id
-                            ser = self._series[series_id]
-                            ser.set_ydata(ys)
-                        else:
-                            assert series_id == len(self._series)
-                            self._series.append(ax.plot(ys, label=m, marker=ma, markersize=5)[0])
+                        plot_xdata_by_series.append(None)
+                    plot_ydata_by_series.append(ys)
+                    if not only_update_data: self._labels_by_series.append(m)
 
+                    self._axis_ids.append(ax_id)
                     series_id += 1
+            self._ymaxs[ax_id] = max(self._ymaxs[ax_id], ymax)
+            self._ymins[ax_id] = min(self._ymins[ax_id], ymin)
 
-            if not only_update_data:
-                # adaptively switch to log scale
-                if ymax > ymin and ymin > 0.0:
-                    if math.log10(ymax/ymin) > 2:
-                        ax.set_yscale('log')
 
-                ax.grid()
+    def do_plots(self):
+        start_time = time.clock()
 
-                font_p = mpl.font_manager.FontProperties()
-                font_p.set_size("small")
-                ax.legend(loc="upper left", bbox_to_anchor=(1,1), prop = font_p)
+        nplots = len(self._plot_xdata_by_file_and_series[0])
+        self._init(nplots, self._xlabel)
 
-        start_time_save = time.clock()
-        if isinstance(outfh, str):
-            self._fig.savefig(outfh)
-        else:
-            fmt = os.path.basename(outfh.name).split(".")[-1]
-            self._fig.savefig(outfh, format=fmt)
-        global time_plot_save
-        time_plot_save += time.clock() - start_time_save
+        markers = [ 'x', '+' ]
 
-        # plt.close(self._fig)
+        series_id = 0
+
+        # if (not only_update_data) and style_cb is not None: style_cb(plt, ax)
+
+        first_file = True
+        for fn, xdata_by_series, ydata_by_series in zip(
+                self._output_files,
+                self._plot_xdata_by_file_and_series,
+                self._plot_ydata_by_file_and_series):
+
+            for series_id, (xdata, ydata, label, ax_id) in enumerate(zip(
+                xdata_by_series, ydata_by_series,
+                self._labels_by_series, self._axis_ids)):
+
+                ax = self._axes[ax_id]
+
+                marker = itertools.cycle(markers)
+
+                if xdata is not None:
+                    # no markers if more than 50 data points
+                    ma = marker.next() if len(ydata) <= 50 else None
+                    if not first_file:
+                        assert len(self._series) > series_id
+                        ser = self._series[series_id]
+                        ser.set_xdata(xdata)
+                        ser.set_ydata(ydata)
+                    else:
+                        assert series_id == len(self._series)
+                        self._series.append(ax.plot(xdata, ydata, label=label, marker=ma, markersize=5)[0])
+                else:
+                    # no markers if more than 50 data points
+                    ma = marker.next() if len(ydata) <= 50 else None
+                    if not first_file:
+                        assert len(self._series) > series_id
+                        ser = self._series[series_id]
+                        ser.set_ydata(ydata)
+                    else:
+                        assert series_id == len(self._series)
+                        self._series.append(ax.plot(ydata, label=label, marker=ma, markersize=5)[0])
+
+            if first_file:
+                for ax, ymin, ymax in zip(self._axes, self._ymins, self._ymaxs):
+                    # adaptively switch to log scale
+                    if ymax > ymin and ymin > 0.0:
+                        if math.log10(ymax/ymin) > 2:
+                            ax.set_yscale('log')
+
+                    ax.set_ylim(ymin, ymax)
+
+                    ax.grid()
+
+                    font_p = mpl.font_manager.FontProperties()
+                    font_p.set_size("small")
+                    ax.legend(loc="upper left", bbox_to_anchor=(1,1), prop = font_p)
+
+
+            start_time_save = time.clock()
+            if isinstance(fn, str):
+                self._fig.savefig(fn)
+            else:
+                fmt = os.path.basename(outfh.name).split(".")[-1]
+                self._fig.savefig(fn, format=fmt)
+            global time_plot_save
+            time_plot_save += time.clock() - start_time_save
+
+            first_file = False
 
         global time_plot
         time_plot += time.clock() - start_time
+
 
     def __del__(self):
         if self._fig:
