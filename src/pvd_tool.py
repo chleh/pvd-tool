@@ -39,6 +39,7 @@ import json
 
 import imp
 
+import time # for performance measurement
 import datetime
 
 import itertools
@@ -50,6 +51,11 @@ import math
 import numbers
 import six
 
+
+time_total = time.clock()
+time_plot = 0.0
+time_plot_save = 0.0
+time_import_vtk = 0.0
 
 
 def die(msg, status=1):
@@ -680,6 +686,8 @@ def logplot_to_file(*args):
 
 
 def _plot_to_file(meta, recs, outfh, style_cb=None):
+    start_time = time.clock()
+
     if isinstance(recs, list):
         recs = np.asarray(recs)
 
@@ -782,9 +790,13 @@ def _plot_to_file(meta, recs, outfh, style_cb=None):
                 ymax = max(ymax, max(ys))
                 ymin = min(ymin, min(ys))
                 if times is not None:
-                    ax.plot(times, ys, label=m, marker=marker.next(), markersize=5)
+                    # no markers if more than 50 data points
+                    ma = marker.next() if len(times) <= 50 else None
+                    ax.plot(times, ys, label=m, marker=ma, markersize=5)
                 else:
-                    ax.plot(ys, label=m, marker=marker.next(), markersize=5)
+                    # no markers if more than 50 data points
+                    ma = marker.next() if len(ys) <= 50 else None
+                    ax.plot(ys, label=m, marker=ma, markersize=5)
 
         # adaptively switch to log scale
         if ymax > ymin and ymin > 0.0:
@@ -799,12 +811,19 @@ def _plot_to_file(meta, recs, outfh, style_cb=None):
         font_p.set_size("small")
         ax.legend(loc="upper left", bbox_to_anchor=(1,1), prop = font_p)
 
+    start_time_save = time.clock()
     if isinstance(outfh, str):
         fig.savefig(outfh)
     else:
         fmt = os.path.basename(outfh.name).split(".")[-1]
         fig.savefig(outfh, format=fmt)
+    global time_plot_save
+    time_plot_save += time.clock() - start_time_save
+
     plt.close(fig)
+
+    global time_plot
+    time_plot += time.clock() - start_time
 
 
 def gather_files(infh):
@@ -1781,6 +1800,12 @@ def _run_main():
 
     args.func(args)
 
+    # global time_total, time_plot, time_import_vtk
+    # print("total execution took {} seconds".format(time.clock() - time_total))
+    # print("importing vtk took   {} seconds".format(time_import_vtk))
+    # print("plotting took        {} seconds".format(time_plot))
+    # print("saving plots took    {} seconds".format(time_plot_save))
+
 
 if __name__ == "__main__":
     _run_main()
@@ -1789,7 +1814,9 @@ else:
     import matplotlib.pyplot as plt
     # has to be imported after matplotlib
     try:
+        start_time = time.clock()
         import vtk
+        time_import_vtk = time.clock() - start_time
     except ImportError:
         warn("module vtk will not be available")
 
