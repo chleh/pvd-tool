@@ -21,7 +21,6 @@
 
 # TODO
 # * more metadata written to csv (timestamp, cmdline args, ...)
-# * metadata as JSON to csv
 
 
 import sys
@@ -40,21 +39,17 @@ import json
 import imp
 
 import time # for performance measurement
-import datetime
-
-import itertools
 
 from fnmatch import fnmatchcase
-
-import math
 
 import numbers
 import six
 
+import plot
+from helpers import *
+
 
 time_total = time.clock()
-time_plot = 0.0
-time_plot_save = 0.0
 time_import_vtk = 0.0
 
 
@@ -158,171 +153,6 @@ def apply_script(fcts, timesteps, grids):
         res[i] = ngrid
 
     return res
-
-
-class DoV:
-    TIM = 0
-    DOM = 1
-    VAL = 2
-
-    def __init__(self, *args):
-        pass
-
-    def __str__(self):
-        if   self == DoV.TIM: return "tim"
-        elif self == DoV.DOM: return "dom"
-        elif self == DoV.VAL: return "val"
-        raise ValueError("unrecognized DoV constant")
-
-    @staticmethod
-    def from_str(s):
-        if   s == "tim": return DoV.TIM
-        elif s == "dom": return DoV.DOM
-        elif s == "val": return DoV.VAL
-        raise ValueError("unrecognized DoV constant: {0}".format(s))
-
-DoV.TIM = DoV(DoV.TIM)
-DoV.DOM = DoV(DoV.DOM)
-DoV.VAL = DoV(DoV.VAL)
-
-
-# check objects for equality in a generic way
-class EqMixin(object):
-    def __eq__(self, other):
-        return type(other) is type(self) and self.__dict__ == other.__dict__
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
-
-class Meta(EqMixin):
-    def __init__(self, src, dov=None, attr=None, comp=None, pt_or_elem_id=None, tfm=False):
-        if src and isinstance(src, Meta):
-            # copy other
-            self.col  = src.col
-            self.dov  = src.dov
-            self.pex  = src.pex
-            self.attr = src.attr
-            self.comp = src.comp
-            self.src  = src.src
-            self.tfm  = src.tfm
-        elif src and isinstance(src, dict):
-            self.col  = int(src["c"]) - 1 if "c" in src else None
-            self.dov  = DoV.from_str(src["t"])
-            self.pex  = src["pe"] if "pe" in src else None
-            self.attr = src["a"]
-            self.comp = src["cmp"] if "cmp" in src else None
-            self.src  = src["src"] if "src" in src else None
-            self.tfm  = src["tfm"] if "tfm" in src else False
-        else:
-            assert isinstance(dov, DoV)
-            assert attr != None
-
-            self.col  = None
-            self.dov  = dov
-            self.pex  = pt_or_elem_id
-            self.attr = attr
-            self.comp = comp
-            self.src  = src
-            self.tfm  = tfm
-
-    def __str__(self):
-        s = ""
-        if self.attr is not None:
-            s += self.attr
-        if self.comp is not None:
-            s += "[{0}]".format(self.comp)
-        if self.pex is not None:
-            s += " at {0}".format(self.pex)
-        if self.src is not None:
-            if self.tfm:
-                s += " ({0}, transformed)".format(self.src)
-            else:
-                s += " ({0})".format(self.src)
-        elif self.tfm:
-            s += " (transformed)"
-
-        return s # ATTR[COMP] at pt PT (SRC, transformed)
-
-    def __unicode__(self):
-        return unicode(str(self))
-
-    def __iter__(self):
-        attrs = []
-        if self.col != None: attrs.append(("c", self.col))
-        attrs.append(("t", self.dov))
-        if self.pex != None: attrs.append(("pe", self.pex))
-        attrs.append(("a", self.attr))
-        if self.comp != None: attrs.append(("cmp", self.comp))
-        if self.src != None: attrs.append(("src", self.src))
-        if self.tfm: attrs.append(("tfm", self.tfm))
-
-        for k, v in attrs:
-            yield (k, v)
-
-    def get_attr_id(self):
-        return "attr {0} comp {1} at pt {2}".format(self.attr, self.pex, self.comp)
-
-
-class MetaList(EqMixin):
-    def __init__(self, metas):
-        self.ms = metas
-
-    # get all columns where the given keywords have the respective values
-    def get_columns(self, **kwargs):
-        cols = list(self.columns(**kwargs))
-        # this assertion makes using this method's output as array index safer.
-        # TODO difference numpy index empty tuple vs. empty list
-        assert cols # didn't find any column matching the given selector
-        return cols
-
-    def get_column(self, **kwargs):
-        cols = self.get_columns(**kwargs)
-        assert len(cols) == 1
-        return cols[0]
-
-    def get_column_from(self, recs, **kwargs):
-        return recs[:, self.get_column(**kwargs)]
-
-    def get_columns_from(self, recs, **kwargs):
-        return recs[:, self.get_columns(**kwargs)]
-
-    def columns(self, **kwargs):
-        for i, m in enumerate(self.ms):
-            for k, v in kwargs.items():
-                a = getattr(m, k)
-                if isinstance(v, str):
-                    if not fnmatchcase(a, v):
-                        break
-                elif a != v:
-                    break
-            else:
-                # yield only if match
-                yield i
-
-    # record (prop_value, column_id) for each value of property prop
-    # filtered by kwargs
-    def each(self, prop, **kwargs):
-        map_prop_cols = {}
-        for ci in self.columns(**kwargs):
-            pval = getattr(self.ms[ci], prop)
-            if pval not in map_prop_cols:
-                map_prop_cols[pval] = []
-            map_prop_cols[pval].append(ci)
-
-        return sorted(map_prop_cols.items())
-
-    def __getitem__(self, i):
-        return self.ms[i]
-
-    def __iter__(self):
-        return self.ms.__iter__()
-
-    def __len__(self):
-        return len(self.ms)
-
-    def append(self, *args, **kwargs):
-        self.ms.append(*args, **kwargs)
 
 
 def get_point_data_from_grid(
@@ -675,157 +505,6 @@ def read_csv(fh, parse_header=True):
     return arr, meta
 
 
-def plot_to_file(*args):
-    _plot_to_file(*args)
-
-
-def logplot_to_file(*args):
-    def cb(plt, ax):
-        ax.set_yscale("log")
-    _plot_to_file(*(args + (cb,)))
-
-
-def _plot_to_file(meta, recs, outfh, style_cb=None):
-    start_time = time.clock()
-
-    if isinstance(recs, list):
-        recs = np.asarray(recs)
-
-    # try:
-    #     print("recs", recs)
-    #     iter(recs[0])
-    # except:
-    if len(recs.shape) == 1:
-        # make 2D column vector out of recs
-        recs = np.expand_dims(recs, axis=1)
-        assert not isinstance(meta, list)
-        meta = [ meta ]
-
-    if meta is None:
-        if recs.shape[1] > 1:
-            # first column to x-axis, all other columns to y axes
-            meta = [ None ] * recs.shape[1]
-            meta[0] = Meta(None, DoV.TIM, "x")
-            for i in range(1, len(meta)):
-                meta[i] = Meta(None, DoV.VAL, "y{0}".format(i))
-        else:
-            # only one column, x-axis will be record number
-            meta = [ Meta(None, DoV.VAL, "y") ]
-
-    elif isinstance(meta, list) or isinstance(meta, MetaList):
-        assert len(meta) == recs.shape[1]
-
-        meta = list(meta) # make a copy
-
-        if recs.shape[1] > 1:
-            # first column to x-axis, all other columns to y axes
-            if not isinstance(meta[0], Meta):
-                for i, m in enumerate(meta):
-                    if i==0:
-                        meta[i] = Meta(None, DoV.TIM, m)
-                    else:
-                        meta[i] = Meta(None, DoV.VAL, m)
-        else:
-            # only one column, x-axis will be record number
-            if not isinstance(meta[0], Meta):
-                for i, m in enumerate(meta):
-                    meta[i] = Meta(None, DoV.VAL, m)
-
-    else:
-        raise TypeError("parameter meta is neither None nor list")
-
-    meta_by_attr = {}
-
-    # each attribute will be plotted in a separate subplot
-    times = None
-    xlabel = None
-    for i, m in enumerate(meta):
-        a = m.attr
-        if m.dov == DoV.TIM:
-            times = recs[:, i]
-            xlabel = a
-        elif m.dov == DoV.VAL:
-            if a not in meta_by_attr:
-                meta_by_attr[a] = [(i, m)]
-            else:
-                meta_by_attr[a].append((i, m))
-    if recs.shape[1] == 1:
-        xlabel = "n"
-    else:
-        # times = [ i for i, _ in enumerate(recs) ]
-        assert times is not None
-
-    nplots = len(meta_by_attr)
-    height = 6 + 4*(nplots-1)
-    fig, axes = plt.subplots(nplots, sharex=False, figsize=(10, height), dpi=72)
-    if nplots == 1: axes = [axes]
-
-    axes[0].set_title("created at {0}".format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-    axes[-1].set_xlabel(xlabel)
-    
-    bot = 0.1 * 6 / height
-    sep = 0.1 if nplots == 1 else 0.1 / (nplots-1)
-    sep += (nplots - 1) * bot
-    fig.subplots_adjust(
-            hspace = sep,
-            bottom = bot,
-            top    = 1.0 - 0.05 * 6 / height,
-            left=.1, right=.95)
-
-    markers = [ 'x', '+' ]
-
-    for ax, am in zip(axes, sorted(meta_by_attr.items())):
-        attr = am[0]
-        metas = am[1]
-        if style_cb is not None: style_cb(plt, ax)
-
-        marker = itertools.cycle(markers)
-
-        ymax = float("-inf")
-        ymin = float("inf")
-        for i, m in metas:
-            ys = recs[:,i]
-            # TODO why shouldn't there be ys?
-            if len(ys) > 0:
-                ymax = max(ymax, max(ys))
-                ymin = min(ymin, min(ys))
-                if times is not None:
-                    # no markers if more than 50 data points
-                    ma = marker.next() if len(times) <= 50 else None
-                    ax.plot(times, ys, label=m, marker=ma, markersize=5)
-                else:
-                    # no markers if more than 50 data points
-                    ma = marker.next() if len(ys) <= 50 else None
-                    ax.plot(ys, label=m, marker=ma, markersize=5)
-
-        # adaptively switch to log scale
-        if ymax > ymin and ymin > 0.0:
-            if math.log10(ymax/ymin) > 2:
-                ax.set_yscale('log')
-
-        ax.grid()
-
-        box = ax.get_position()
-        ax.set_position([box.x0, box.y0, box.width * 0.7, box.height])
-        font_p = mpl.font_manager.FontProperties()
-        font_p.set_size("small")
-        ax.legend(loc="upper left", bbox_to_anchor=(1,1), prop = font_p)
-
-    start_time_save = time.clock()
-    if isinstance(outfh, str):
-        fig.savefig(outfh)
-    else:
-        fmt = os.path.basename(outfh.name).split(".")[-1]
-        fig.savefig(outfh, format=fmt)
-    global time_plot_save
-    time_plot_save += time.clock() - start_time_save
-
-    plt.close(fig)
-
-    global time_plot
-    time_plot += time.clock() - start_time
-
-
 def gather_files(infh):
     if isinstance(infh, str):
         fn = infh
@@ -1067,114 +746,6 @@ def OutputDir(val):
         nums_tfms.append((int(spl[i+1]), do_transform))
 
     return (nums_tfms, path)
-
-
-class Cell(EqMixin):
-    def __init__(self, i):
-        self.value = int(i)
-
-    def get(self):
-        return self.value
-
-    def flatten(self): return None
-
-    def get_x_value(self): return None
-
-    def __str__(self):
-        return "cell {}".format(self.value)
-
-# TODO add property "x-value"
-class Point(EqMixin):
-    def __init__(self, s, x_value=None):
-        self.index = -1
-        self.coords = []
-        self.x_values = [ x_value ]
-
-        if isinstance(s, basestring):
-            self.init_string(s)
-        elif isinstance(s, numbers.Integral):
-            self.index = s
-        else:
-            self.coords = [ list(s) ]
-
-    def get(self):
-        return self.index
-
-    def get_coords(self):
-        return self.coords
-
-    def get_x_value(self):
-        return self.x_values[0]
-
-    def __str__(self):
-        if self.coords:
-            return "pt ({})".format(", ".join(str(x) for x in self.coords[0]))
-        else:
-            return "pt {}".format(self.index)
-
-    def flatten(self):
-        if len(self.coords) <= 1: return None
-        
-        return [ Point(c, x) for c, x in zip(self.coords, self.x_values) ]
-
-    def init_string(self, s):
-        try:
-            index = int(s)
-            assert index >= 0
-            self.index = index
-        except ValueError:
-            parts = s.split("/")
-            if len(parts) == 1:
-                self.index = -1
-                self.coords = [ self.parse_coords(s) ]
-
-            elif len(parts) == 3:
-                self.index = -1
-                c1 = self.parse_coords(parts[0])
-                c2 = self.parse_coords(parts[2])
-                assert len(c1) == len(c2)
-
-                diff = math.sqrt(sum( (x1-x2)**2 for x1, x2 in zip(c1, c2) ))
-                assert diff != 0
-
-                self.coords = []
-                self.x_values = []
-
-                delta = parts[1].strip()
-                if delta[0] == '#':
-                    delta = int(delta[1:]) # delta is number of equally spaced points
-                    assert delta > 1
-                    for i in range(delta):
-                        t = float(i) / (delta-1)
-                        cs = list(c1)
-                        for ci in range(len(cs)):
-                            cs[ci] = (1.0 - t) * c1[ci] + t * c2[ci]
-                        self.coords.append(cs)
-                        self.x_values.append(diff*t)
-
-                else:
-                    # make evenly distributed point with distance of delta
-                    delta = float(delta)
-                    assert delta > 0
-
-                    i=0
-                    while i*delta < diff:
-                        t = i*delta/diff
-                        cs = list(c1)
-                        for ci in range(len(cs)):
-                            cs[ci] = (1.0 - t) * c1[ci] + t * c2[ci]
-                        self.coords.append(cs)
-                        self.x_values.append(i*delta)
-
-                        i=i+1
-            else:
-                assert False # value has wrong format
-
-    @staticmethod
-    def parse_coords(s):
-        coords = [ float(p) for p in s.split(",") ]
-        assert len(coords) != 0 and len(coords) <= 3
-        return coords
 
 
 def check_consistency_ts(args):
@@ -1450,7 +1021,7 @@ def process_timeseries_diff(args):
 
     if args.out_plot:
         for meta, recs, outfh in get_output_data_diff(aggr_data, args.out_plot):
-            plot_to_file(meta, recs, outfh)
+            plot.plot_to_file(meta, recs, outfh)
 
 
 
@@ -1550,7 +1121,7 @@ def process_timeseries(args):
                 meta += m
         recs = combine_arrays(recs)
 
-        plot_to_file(meta, recs, outfh)
+        plot.plot_to_file(meta, recs, outfh)
 
 
 def process_whole_domain(args):
@@ -1681,7 +1252,7 @@ def process_whole_domain(args):
                             else:
                                 fn = "{}_{}.png".format(outdirn, t)
                             print("plot output to {}".format(fn))
-                        plot_to_file(meta, recs, fn)
+                        plot.plot_to_file(meta, recs, fn)
 
 
     # write pvd files
@@ -1800,11 +1371,11 @@ def _run_main():
 
     args.func(args)
 
-    # global time_total, time_plot, time_import_vtk
-    # print("total execution took {} seconds".format(time.clock() - time_total))
-    # print("importing vtk took   {} seconds".format(time_import_vtk))
-    # print("plotting took        {} seconds".format(time_plot))
-    # print("saving plots took    {} seconds".format(time_plot_save))
+    global time_total, time_import_vtk
+    print("total execution took {} seconds".format(time.clock() - time_total))
+    print("importing vtk took   {} seconds".format(time_import_vtk))
+    print("plotting took        {} seconds".format(plot.time_plot))
+    print("saving plots took    {} seconds".format(plot.time_plot_save))
 
 
 if __name__ == "__main__":
