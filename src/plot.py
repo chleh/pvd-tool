@@ -4,7 +4,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import time
 
+import Queue
 import itertools
+
+import multiprocessing
 
 from helpers import *
 
@@ -22,6 +25,8 @@ class Plot:
         self._labels_by_series = []
         self._output_files = []
         self._axis_ids = []
+        
+        self._work_queue = multiprocessing.Queue()
 
     def plot_to_file(self, *args):
         self._plot_to_file(*args)
@@ -35,16 +40,16 @@ class Plot:
 
     def _init(self, nplots, xlabel):
         height = 6 + 4*(nplots-1)
-        self._fig, self._axes = plt.subplots(nplots, sharex=False, figsize=(10, height), dpi=72)
-        if nplots == 1: self._axes = [axes]
+        fig, axes = plt.subplots(nplots, sharex=False, figsize=(10, height), dpi=72)
+        if nplots == 1: axes = [axes]
 
-        self._axes[0].set_title("created at {0}".format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-        self._axes[-1].set_xlabel(xlabel)
+        axes[0].set_title("created at {0}".format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        axes[-1].set_xlabel(xlabel)
         
         bot = 0.1 * 6 / height
         sep = 0.1 if nplots == 1 else 0.1 / (nplots-1)
         sep += (nplots - 1) * bot
-        self._fig.subplots_adjust(
+        fig.subplots_adjust(
                 hspace = sep,
                 bottom = bot,
                 top    = 1.0 - 0.05 * 6 / height,
@@ -159,8 +164,18 @@ class Plot:
             self._ymaxs[ax_id] = max(self._ymaxs[ax_id], ymax)
             self._ymins[ax_id] = min(self._ymins[ax_id], ymin)
 
+    
+    def _do_plot(self, worker_id):
+        while True:
+            work = self._work_queue.get()
+            if work is None:
+                self._work_queue.put(None)
+                break
 
-    def do_plots(self):
+            print(worker_id, "fn", work[0])
+
+
+    def do_plots(self, num_threads=1):
         start_time = time.clock()
 
         nplots = len(self._plot_xdata_by_file_and_series[0])
@@ -168,9 +183,20 @@ class Plot:
 
         markers = [ 'x', '+' ]
 
-        series_id = 0
-
         # if (not only_update_data) and style_cb is not None: style_cb(plt, ax)
+        
+        for fn, xdata_by_series, ydata_by_series in zip(
+                self._output_files,
+                self._plot_xdata_by_file_and_series,
+                self._plot_ydata_by_file_and_series):
+            self._work_queue.put((fn, xdata_by_series, ydata_by_series))
+        self._work_queue.put(None)
+
+        workers = []
+        for i in range(num_threads):
+            w = multiprocessing.Process(target=self._do_plot, args=(i, ))
+            workers.append(w)
+            w.start()
 
         first_file = True
         for fn, xdata_by_series, ydata_by_series in zip(
@@ -182,7 +208,7 @@ class Plot:
                 xdata_by_series, ydata_by_series,
                 self._labels_by_series, self._axis_ids)):
 
-                ax = self._axes[ax_id]
+                ax = axes[ax_id]
 
                 marker = itertools.cycle(markers)
 
@@ -209,7 +235,7 @@ class Plot:
                         self._series.append(ax.plot(ydata, label=label, marker=ma, markersize=5)[0])
 
             if first_file:
-                for ax, ymin, ymax in zip(self._axes, self._ymins, self._ymaxs):
+                for ax, ymin, ymax in zip(axes, self._ymins, self._ymaxs):
                     # adaptively switch to log scale
                     if ymax > ymin and ymin > 0.0:
                         if math.log10(ymax/ymin) > 2:
@@ -226,10 +252,10 @@ class Plot:
 
             start_time_save = time.clock()
             if isinstance(fn, str):
-                self._fig.savefig(fn)
+                fig.savefig(fn)
             else:
                 fmt = os.path.basename(outfh.name).split(".")[-1]
-                self._fig.savefig(fn, format=fmt)
+                fig.savefig(fn, format=fmt)
             global time_plot_save
             time_plot_save += time.clock() - start_time_save
 
@@ -238,10 +264,14 @@ class Plot:
         global time_plot
         time_plot += time.clock() - start_time
 
+        for w in workers:
+            w.join()
+
+
 
     def __del__(self):
-        if self._fig:
-            plt.close(self._fig)
+        if fig:
+            plt.close(fig)
 
 
 
