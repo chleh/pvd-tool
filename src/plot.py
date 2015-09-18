@@ -55,6 +55,8 @@ class Plot:
                 top    = 1.0 - 0.05 * 6 / height,
                 left=.1, right=.7)
 
+        return fig, axes
+
 
     def add_data(self, meta, recs, outfn):
         start_time = time.clock()
@@ -165,44 +167,20 @@ class Plot:
             self._ymins[ax_id] = min(self._ymins[ax_id], ymin)
 
     
-    def _do_plot(self, worker_id):
+    def _do_plot(self, worker_id, fig, axes):
+        first_file = True
+
+        markers = [ 'x', '+' ]
+
         while True:
             work = self._work_queue.get()
             if work is None:
                 self._work_queue.put(None)
                 break
 
-            print(worker_id, "fn", work[0])
+            fn, xdata_by_series, ydata_by_series = work
 
-
-    def do_plots(self, num_threads=1):
-        start_time = time.clock()
-
-        nplots = len(self._plot_xdata_by_file_and_series[0])
-        self._init(nplots, self._xlabel)
-
-        markers = [ 'x', '+' ]
-
-        # if (not only_update_data) and style_cb is not None: style_cb(plt, ax)
-        
-        for fn, xdata_by_series, ydata_by_series in zip(
-                self._output_files,
-                self._plot_xdata_by_file_and_series,
-                self._plot_ydata_by_file_and_series):
-            self._work_queue.put((fn, xdata_by_series, ydata_by_series))
-        self._work_queue.put(None)
-
-        workers = []
-        for i in range(num_threads):
-            w = multiprocessing.Process(target=self._do_plot, args=(i, ))
-            workers.append(w)
-            w.start()
-
-        first_file = True
-        for fn, xdata_by_series, ydata_by_series in zip(
-                self._output_files,
-                self._plot_xdata_by_file_and_series,
-                self._plot_ydata_by_file_and_series):
+            # print(worker_id, "fn", fn)
 
             for series_id, (xdata, ydata, label, ax_id) in enumerate(zip(
                 xdata_by_series, ydata_by_series,
@@ -241,7 +219,11 @@ class Plot:
                         if math.log10(ymax/ymin) > 2:
                             ax.set_yscale('log')
 
-                    ax.set_ylim(ymin, ymax)
+                    if ymax > ymin:
+                        d = ymax - ymin
+                        ymax += 0.025 * d
+                        ymin -= 0.025 * d
+                        ax.set_ylim(ymin, ymax)
 
                     ax.grid()
 
@@ -254,24 +236,49 @@ class Plot:
             if isinstance(fn, str):
                 fig.savefig(fn)
             else:
-                fmt = os.path.basename(outfh.name).split(".")[-1]
+                fmt = os.path.basename(fn.name).split(".")[-1]
                 fig.savefig(fn, format=fmt)
-            global time_plot_save
-            time_plot_save += time.clock() - start_time_save
+            # global time_plot_save
+            # time_plot_save += time.clock() - start_time_save
 
             first_file = False
 
-        global time_plot
-        time_plot += time.clock() - start_time
 
-        for w in workers:
+    def do_plots(self, num_threads=1):
+        if num_threads == 0:
+            num_threads = multiprocessing.cpu_count()
+        if num_threads > 1:
+            print("plotting data using {} threads".format(num_threads))
+
+        start_time = time.time()
+
+        nplots = len(self._plot_xdata_by_file_and_series[0])
+
+        # if (not only_update_data) and style_cb is not None: style_cb(plt, ax)
+        
+        for fn, xdata_by_series, ydata_by_series in zip(
+                self._output_files,
+                self._plot_xdata_by_file_and_series,
+                self._plot_ydata_by_file_and_series):
+            self._work_queue.put((fn, xdata_by_series, ydata_by_series))
+        self._work_queue.put(None)
+
+        workers = []
+        figs = []
+        for i in range(num_threads):
+            fig, axes = self._init(nplots, self._xlabel)
+            figs.append(fig)
+            w = multiprocessing.Process(target=self._do_plot, args=(i, fig, axes))
+            workers.append(w)
+            w.start()
+
+        for w, fig in zip(workers, figs):
             w.join()
-
-
-
-    def __del__(self):
-        if fig:
             plt.close(fig)
+
+        global time_plot
+        time_plot += time.time() - start_time
+
 
 
 

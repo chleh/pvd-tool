@@ -49,7 +49,7 @@ import plot
 from helpers import *
 
 
-time_total = time.clock()
+time_total = time.time()
 time_import_vtk = 0.0
 
 
@@ -1224,6 +1224,8 @@ def process_whole_domain(args):
                         write_csv(meta, recs, fn, args.csv_prec[0], json_enc)
 
         if args.out_plot:
+            assert(args.num_threads >= 0)
+
             # plot
             plt = plot.Plot()
             for nums_tfms, outdirn in args.out_plot or []:
@@ -1256,7 +1258,7 @@ def process_whole_domain(args):
                                 fn = "{}_{}.png".format(outdirn, t)
                             print("plot output to {}".format(fn))
                         plt.add_data(meta, recs, fn)
-            plt.do_plots(2)
+            plt.do_plots(args.num_threads)
 
 
     # write pvd files
@@ -1356,10 +1358,11 @@ def _run_main():
     # domain
     parser_dom = subparsers.add_parser("domain", help="dom help", parents=[parser_io, parser_common, parser_frag_ts])
 
-    parser_dom.add_argument("--out-pvd",        action="append", type=OutputFile)
-    parser_dom.add_argument("--out-csv",        action="append", type=OutputDir)
-    parser_dom.add_argument("--out-plot",       action="append", type=OutputDir)
-    parser_dom.add_argument("-t", "--timestep", action="append", required=False)
+    parser_dom.add_argument("--out-pvd",           action="append", type=OutputFile)
+    parser_dom.add_argument("--out-csv",           action="append", type=OutputDir)
+    parser_dom.add_argument("--out-plot",          action="append", type=OutputDir)
+    parser_dom.add_argument("-t", "--timestep",    action="append", required=False)
+    parser_dom.add_argument("-N", "--num-threads", type=int, default=1)
 
     parser_dom.set_defaults(func=process_whole_domain)
 
@@ -1376,7 +1379,7 @@ def _run_main():
     args.func(args)
 
     global time_total, time_import_vtk
-    print("total execution took {} seconds".format(time.clock() - time_total))
+    print("total execution took {} seconds".format(time.time() - time_total))
     print("importing vtk took   {} seconds".format(time_import_vtk))
     print("plotting took        {} seconds".format(plot.time_plot))
     print("saving plots took    {} seconds".format(plot.time_plot_save))
