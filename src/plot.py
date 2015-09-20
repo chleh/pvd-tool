@@ -332,7 +332,6 @@ class GnuPlot(Plot):
 set grid back
 set key noenhanced
 """)
-        print(self._axis_ids)
 
         while True:
             work = self._work_queue.get()
