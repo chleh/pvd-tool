@@ -372,16 +372,6 @@ set key noenhanced
         proc.stdin.write("exit\n")
         proc.stdin.close()
 
-
-    def _do_plot(self, worker_id):
-        proc = subprocess.Popen(["gnuplot"], stdin=subprocess.PIPE)
-
-        writer = threading.Thread(target=self._write_data_to_gnuplot, args=(worker_id, proc))
-        writer.start()
-        writer.join()
-
-        proc.wait()
-
     def do_plots(self, num_threads=1):
         if num_threads == 0:
             num_threads = multiprocessing.cpu_count()
@@ -400,15 +390,19 @@ set key noenhanced
         self._work_queue.put(None)
 
         workers = []
-        figs = []
+        procs = []
         for i in range(num_threads):
-            w = multiprocessing.Process(target=self._do_plot, args=(i,))
+            proc = subprocess.Popen(["gnuplot"], stdin=subprocess.PIPE)
+            procs.append(proc)
+
+            w = threading.Thread(target=self._write_data_to_gnuplot, args=(i, proc))
             workers.append(w)
+
             w.start()
 
-        for w, fig in zip(workers, figs):
+        for w, p in zip(workers, procs):
             w.join()
-            plt.close(fig)
+            p.wait()
 
         global time_plot
         time_plot += time.time() - start_time
