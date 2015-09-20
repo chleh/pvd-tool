@@ -48,6 +48,8 @@ import six
 import plot
 from helpers import *
 
+# Plot = plot.MPLPlot
+Plot = plot.GnuPlot
 
 time_total = time.time()
 time_import_vtk = 0.0
@@ -1020,7 +1022,7 @@ def process_timeseries_diff(args):
             write_csv(meta, recs, outfh, args.csv_prec[0], json_enc)
 
     if args.out_plot:
-        plt = plot.Plot()
+        plt = Plot()
         for meta, recs, outfh in get_output_data_diff(aggr_data, args.out_plot):
             plt.plot_to_file(meta, recs, outfh)
 
@@ -1109,7 +1111,7 @@ def process_timeseries(args):
 
 
     # plot
-    plt = plot.Plot()
+    plt = Plot()
     for nums_tfms, outfh in args.out_plot or []:
         meta = []
         recs = []
@@ -1227,7 +1229,7 @@ def process_whole_domain(args):
             assert(args.num_threads >= 0)
 
             # plot
-            plt = plot.Plot()
+            plt = Plot()
             for nums_tfms, outdirn in args.out_plot or []:
                 for ti in range(len(timesteps[nums_tfms[0][0]])):
                     meta = []

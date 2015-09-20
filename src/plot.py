@@ -8,8 +8,12 @@ import Queue
 import itertools
 
 import multiprocessing
+import subprocess
+import threading
 
 from helpers import *
+
+import sys
 
 
 time_plot = 0.0
@@ -36,26 +40,6 @@ class Plot:
         def cb(plt, ax):
             ax.set_yscale("log")
         self._plot_to_file(*(args + (cb,)))
-
-
-    def _init(self, nplots, xlabel):
-        height = 6 + 4*(nplots-1)
-        fig, axes = plt.subplots(nplots, sharex=False, figsize=(10, height), dpi=72)
-        if nplots == 1: axes = [axes]
-
-        axes[0].set_title("created at {0}".format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-        axes[-1].set_xlabel(xlabel)
-        
-        bot = 0.1 * 6 / height
-        sep = 0.1 if nplots == 1 else 0.1 / (nplots-1)
-        sep += (nplots - 1) * bot
-        fig.subplots_adjust(
-                hspace = sep,
-                bottom = bot,
-                top    = 1.0 - 0.05 * 6 / height,
-                left=.1, right=.7)
-
-        return fig, axes
 
 
     def add_data(self, meta, recs, outfn):
@@ -166,7 +150,28 @@ class Plot:
             self._ymaxs[ax_id] = max(self._ymaxs[ax_id], ymax)
             self._ymins[ax_id] = min(self._ymins[ax_id], ymin)
 
-    
+
+class MPLPlot(Plot):
+    def _init(self, nplots, xlabel):
+        height = 6 + 4*(nplots-1)
+        fig, axes = plt.subplots(nplots, sharex=False, figsize=(10, height), dpi=72)
+        if nplots == 1: axes = [axes]
+
+        axes[0].set_title("created at {0}".format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        axes[-1].set_xlabel(xlabel)
+        
+        bot = 0.1 * 6 / height
+        sep = 0.1 if nplots == 1 else 0.1 / (nplots-1)
+        sep += (nplots - 1) * bot
+        fig.subplots_adjust(
+                hspace = sep,
+                bottom = bot,
+                top    = 1.0 - 0.05 * 6 / height,
+                left=.1, right=.7)
+
+        return fig, axes
+
+
     def _do_plot(self, worker_id, fig, axes):
         first_file = True
 
@@ -278,6 +283,140 @@ class Plot:
 
         global time_plot
         time_plot += time.time() - start_time
+
+
+class GnuPlot(Plot):
+    def _init(self, nplots, xlabel):
+        height = 6 + 4*(nplots-1)
+        fig, axes = plt.subplots(nplots, sharex=False, figsize=(10, height), dpi=72)
+        if nplots == 1: axes = [axes]
+
+        axes[0].set_title("created at {0}".format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        axes[-1].set_xlabel(xlabel)
+        
+        bot = 0.1 * 6 / height
+        sep = 0.1 if nplots == 1 else 0.1 / (nplots-1)
+        sep += (nplots - 1) * bot
+        fig.subplots_adjust(
+                hspace = sep,
+                bottom = bot,
+                top    = 1.0 - 0.05 * 6 / height,
+                left=.1, right=.7)
+
+        return fig, axes
+
+    def _write_plot(self, gp, xdata, ydata, label, marker):
+        if xdata is None:
+            if marker:
+                gp('plot "-" u 0:1 w lp t "{}"\n'.format(label))
+            else:
+                gp('plot "-" u 0:1 w l t "{}"\n'.format(label))
+
+            for x, y in ydata:
+                gp(" {:.16e}\n".format(y))
+            gp("EOF\n")
+        else:
+            if marker:
+                gp('plot "-" w lp t "{}"\n'.format(label))
+            else:
+                gp('plot "-" w l t "{}"\n'.format(label))
+
+            for x, y in zip(xdata, ydata):
+                gp(" {:.16e} {:16e}\n".format(x, y))
+            gp("EOF\n")
+
+    def _write_data_to_gnuplot(self, worker_id, proc):
+        nplots = len(self._plot_xdata_by_file_and_series[0])
+        width=800
+        height=width/8*(6+4*(nplots-1))
+
+        gp = proc.stdin.write
+        # gp = sys.stdout.write
+        gp("set encoding utf8\n")
+        gp("set terminal pngcairo size {},{} \n".format(width, height))
+
+        gp("""
+set grid back
+set key noenhanced
+""")
+
+        while True:
+            work = self._work_queue.get()
+            if work is None:
+                self._work_queue.put(None)
+                break
+
+            fn, xdata_by_series, ydata_by_series = work
+
+            gp("set output \"{}\"\n".format(fn))
+            title = "created at {}".format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            gp('set multiplot layout {}, 1 title "{}"\n'.format(len(xdata_by_series), title))
+
+            # print(worker_id, "fn", fn)
+
+            for series_id, (xdata, ydata, label, ax_id) in enumerate(zip(
+                xdata_by_series, ydata_by_series,
+                self._labels_by_series, self._axis_ids)):
+
+                if xdata is not None:
+                    # no markers if more than 50 data points
+                    ma = marker.next() if len(ydata) <= 50 else None
+                    self._write_plot(gp, xdata, ydata, label, ma)
+                else:
+                    # no markers if more than 50 data points
+                    ma = marker.next() if len(ydata) <= 50 else None
+                    self._write_plot(gp, None, ydata, label, ma)
+
+            gp("unset multiplot\n")
+            gp("set output\n")
+        proc.stdin.write("exit\n")
+        proc.stdin.close()
+
+
+    def _do_plot(self, worker_id):
+        proc = subprocess.Popen(["gnuplot"], stdin=subprocess.PIPE)
+
+        writer = threading.Thread(target=self._write_data_to_gnuplot, args=(worker_id, proc))
+        writer.start()
+        writer.join()
+
+        proc.wait()
+
+    def do_plots(self, num_threads=1):
+        if num_threads == 0:
+            num_threads = multiprocessing.cpu_count()
+        if num_threads > 1:
+            print("plotting data using {} threads".format(num_threads))
+
+        start_time = time.time()
+
+        # if (not only_update_data) and style_cb is not None: style_cb(plt, ax)
+        
+        for fn, xdata_by_series, ydata_by_series in zip(
+                self._output_files,
+                self._plot_xdata_by_file_and_series,
+                self._plot_ydata_by_file_and_series):
+            self._work_queue.put((fn, xdata_by_series, ydata_by_series))
+        self._work_queue.put(None)
+
+        workers = []
+        figs = []
+        for i in range(num_threads):
+            w = multiprocessing.Process(target=self._do_plot, args=(i,))
+            workers.append(w)
+            w.start()
+
+        for w, fig in zip(workers, figs):
+            w.join()
+            plt.close(fig)
+
+        global time_plot
+        time_plot += time.time() - start_time
+
+
+
+
+
 
 
 
