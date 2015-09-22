@@ -652,16 +652,16 @@ def InputFile(val):
         else:
             return parts[0], fh
 
-    try:
-        if val == "-":
-            fh = sys.stdin
-        else:
+    if val == "-":
+        fh = sys.stdin
+    else:
+        try:
             path = os.path.expanduser(val)
             assert os.path.isfile(path) and os.access(path, os.R_OK)
             fh = path
-    except IOError as e:
-        raise argparse.ArgumentTypeError("I/O error({0}) when trying to open `{2}': {1}".format(e.errno, e.strerror, val))
-    return None, fh
+        except AssertionError as e:
+            raise argparse.ArgumentTypeError("input file `{}' is not readable or not a file".format(path))
+        return None, fh
 
 
 def DirectoryW(val):
