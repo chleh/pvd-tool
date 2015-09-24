@@ -107,13 +107,16 @@ def relpathfrom(origin, relpath):
 # returns: list of (index, name)
 def get_attribute_idcs(fieldData, attrs):
     idcs = []
+    idcs_set = set()
     for a in attrs:
         found = False
         num_arr = fieldData.GetNumberOfArrays()
         for i in xrange(num_arr):
             n = fieldData.GetArray(i).GetName()
             if fnmatchcase(n, a):
-                idcs.append((i, n))
+                if i not in idcs_set:
+                    idcs.append((i, n))
+                    idcs_set.add(i)
                 found = True
         # if num_arr != 0 and not found:
         #     warn("Attribute %s not found" % a)

@@ -87,6 +87,14 @@ class Meta(EqMixin):
 
         return s # ATTR[COMP] at pt PT (SRC, transformed)
 
+    def short_format(self):
+        s = ""
+        if self.attr is not None:
+            s += self.attr
+        if self.comp is not None:
+            s += "[{0}]".format(self.comp)
+        return s
+
     def __unicode__(self):
         return unicode(str(self))
 

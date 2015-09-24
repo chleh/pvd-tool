@@ -290,6 +290,8 @@ class GnuPlot(Plot):
     def _write_plot(self, gp, xdatas, ydatas, labels, markers):
         first = True
 
+        gp("set lmargin 9\n")
+
         for label, marker, xdata in zip(labels, markers, xdatas):
             if first:
                 first = False
@@ -299,14 +301,14 @@ class GnuPlot(Plot):
 
             if xdata is None:
                 if marker:
-                    gp('{} u 0:1 w lp t "{}"'.format(plotcmd, label))
+                    gp('{} u 0:1 w lp t "{}"'.format(plotcmd, label.short_format()))
                 else:
-                    gp('{} u 0:1 w l t "{}"'.format(plotcmd, label))
+                    gp('{} u 0:1 w l t "{}"'.format(plotcmd, label.short_format()))
             else:
                 if marker:
-                    gp('{} w lp t "{}"'.format(plotcmd, label))
+                    gp('{} w lp t "{}"'.format(plotcmd, label.short_format()))
                 else:
-                    gp('{} w l t "{}"'.format(plotcmd, label))
+                    gp('{} w l t "{}"'.format(plotcmd, label.short_format()))
         gp("\n")
 
         for xdata, ydata in zip(xdatas, ydatas):
@@ -320,9 +322,12 @@ class GnuPlot(Plot):
                 gp("EOF\n")
 
     def _write_data_to_gnuplot(self, worker_id, proc):
-        nplots = len(self._plot_xdata_by_file_and_series[0])
-        width=800
-        height=width/8*(6+4*(nplots-1))
+        # nplots = len(self._plot_xdata_by_file_and_series[0])
+        nplots = len(np.unique(self._axis_ids))
+        xplots = 1 if nplots <= 6 else 2
+        yplots = (nplots+1) // xplots
+        width = 800 if xplots == 1 else 1200
+        height=width/8/xplots*(6+4*(yplots-1))
 
         gp = proc.stdin.write
         gp("set encoding utf8\n")
@@ -343,7 +348,7 @@ set key noenhanced
 
             gp("set output \"{}\"\n".format(fn))
             title = "created at {}".format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-            gp('set multiplot layout {}, 1 title "{}"\n'.format(len(xdata_by_series), title))
+            gp('set multiplot layout {}, {} title "{}"\n'.format(yplots, xplots, title))
 
             # gather data by axes
             for ax_id in np.unique(self._axis_ids):
