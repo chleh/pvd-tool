@@ -1,3 +1,5 @@
+# -*- encoding: utf-8 -*-
+
 import matplotlib as mpl # needed to avoid conflicts with vtk
 import matplotlib.pyplot as plt
 
@@ -13,7 +15,7 @@ import threading
 
 from helpers import *
 
-import sys
+import os.path
 
 
 time_plot = 0.0
@@ -331,11 +333,11 @@ class GnuPlot(Plot):
 
         gp = proc.stdin.write
         gp("set encoding utf8\n")
-        gp("set terminal pngcairo size {},{} \n".format(width, height))
+        gp("set terminal pngcairo noenhanced size {},{} \n".format(width, height))
 
         gp("""
 set grid back
-set key noenhanced
+# set key noenhanced
 """)
 
         while True:
@@ -347,7 +349,9 @@ set key noenhanced
             fn, xdata_by_series, ydata_by_series = work
 
             gp("set output \"{}\"\n".format(fn))
-            title = "created at {}".format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            title = "{} – created at {}".format(
+                    os.path.basename(fn),
+                    datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
             gp('set multiplot layout {}, {} title "{}"\n'.format(yplots, xplots, title))
 
             # gather data by axes
