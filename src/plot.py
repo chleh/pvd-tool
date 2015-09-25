@@ -338,6 +338,13 @@ class GnuPlot(Plot):
         gp("""
 set grid back
 # set key noenhanced
+# set autoscale fix
+# set offsets 0, 0, graph 0.025, graph 0.025
+set border back
+set tics in back
+# set xzeroaxis ls -1
+set mxtics
+# set mytics
 """)
 
         while True:
