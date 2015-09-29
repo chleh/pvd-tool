@@ -283,7 +283,7 @@ def filter_grid_ts(src, grid, timestep, attrs, points_cells, incl_coords):
     return None, None
 
 
-def filter_grid_dom(src, grid, attrs, points_cells = None):
+def filter_grid_dom(src, grid, attrs, points_cells, incl_coords):
     gridPoints = grid.GetPoints()
     gridCells  = grid.GetCells()
 
@@ -342,12 +342,12 @@ def filter_grid_dom(src, grid, attrs, points_cells = None):
             if isinstance(point_cell, Point):
                 if point_cell.get_coords():
                     p = map_point_indices[i]
-                    get_point_data_from_grid(point_cell, p, grid_interpolated, src, attrIdcsCoords, attrDataCoords, True,
-                        rec, tmp_meta)
+                    get_point_data_from_grid(point_cell, p, grid_interpolated, src, attrIdcsCoords,
+                            attrDataCoords, incl_coords, rec, tmp_meta)
                 else:
                     p = point_cell.get()
-                    get_point_data_from_grid(point_cell, p, grid, src, attrIdcsPt, attrDataPt, True,
-                        rec, tmp_meta)
+                    get_point_data_from_grid(point_cell, p, grid, src, attrIdcsPt,
+                            attrDataPt, incl_coords, rec, tmp_meta)
             elif isinstance(point_cell, Cell):
                 get_cell_data_from_grid(point_cell, grid, src, attrIdcsCell, attrDataCell, True,
                         rec, tmp_meta)
@@ -563,14 +563,14 @@ def get_timeseries(src, grids, tss, attrs, points, incl_coords):
     return records, oldMeta
 
 
-def get_point_data(src, grids, attrs, points_cells):
+def get_point_data(src, grids, attrs, points_cells, output_coords):
     oldMeta = None
     records = []
     meta = []
 
     for i, g in enumerate(grids):
         if g:
-            recs, meta = filter_grid_dom(src, g, attrs, points_cells)
+            recs, meta = filter_grid_dom(src, g, attrs, points_cells, output_coords)
             if oldMeta is None:
                 oldMeta = meta
             else:
@@ -1188,7 +1188,7 @@ def process_whole_domain(args):
                         grids = vtuFiles[num]
 
                     # TODO add switch cells/points
-                    recs, meta = get_point_data(src, grids, args.attr, points_cells)
+                    recs, meta = get_point_data(src, grids, args.attr, points_cells, args.out_coords)
                     if tfm_idx != 0:
                         for m in meta: m.tfm = True
                     aggr_data[num][tfm_idx] = (recs, meta)
