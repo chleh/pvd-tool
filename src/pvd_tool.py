@@ -529,7 +529,7 @@ def gather_files(infh):
     return timesteps, files
 
 
-def gather_grids(infh, reader, filefilter):
+def gather_grids(infh, reader, filefilter=None):
     def get_grid(path):
         reader.SetFileName(path)
         reader.Update()
@@ -791,7 +791,7 @@ def check_consistency_dom(args):
             assert args.script or not tfm # if script is used, script must be given
 
 
-def load_input_files(in_files, req_out, script_fh, script_params, filefilter=None):
+def load_input_files(in_files, req_out, script_fh, script_params, filefilter):
     assert len(in_files) > 0
 
     # check that all input files are of the same type (either vtu or pvd)
@@ -840,8 +840,8 @@ def load_input_files(in_files, req_out, script_fh, script_params, filefilter=Non
                     if not vtuFiles_transformed[num]:
                         vtuFiles_transformed[num] = apply_script(analytical_model.get_attribute_functions(), timesteps[num], vtuFiles[num])
     elif input_type == ".vtu":
-        timesteps = [ [ None for _ in range(len(in_files)) ] ]
-        vtuFiles =  [ [ None for _ in range(len(in_files)) ] ]
+        timesteps = [ [ None ]*len(in_files) ]
+        vtuFiles =  [ [ None ]*len(in_files) ]
         vtuFiles_transformed = [ None ]
 
         # load and, if necessary, transform source files
@@ -849,9 +849,10 @@ def load_input_files(in_files, req_out, script_fh, script_params, filefilter=Non
             for num, tfm in nums_tfms:
                 assert num == 0
                 for fi, (_, in_file) in enumerate(in_files):
-                    _, vtu = gather_grids(in_file, reader, filefilter)
-                    timesteps[0][fi] = fi
-                    vtuFiles[0][fi]  = vtu[0]
+                    if filefilter.filter(fi, in_file):
+                        _, vtu = gather_grids(in_file, reader)
+                        timesteps[0][fi] = fi
+                        vtuFiles[0][fi] = vtu[0]
                 if tfm != 0:
                     assert script_fh is not None
                     if not scr_loaded:
@@ -934,7 +935,7 @@ class FileFilterByTimestep:
     def filter(self, ts, fn):
         if self._timesteps:
             for t in self._timesteps:
-                # print("ts vs t {} {} -- {} ?<? {}".format(ts, t, abs(ts-t), sys.float_info.epsilon))
+                print("ts vs t {} {} -- {} ?<? {}".format(ts, t, abs(ts-t), sys.float_info.epsilon))
                 if abs(ts-t) < sys.float_info.epsilon \
                         or (ts != 0.0 and abs(ts-t)/ts < 1.e-6):
                     return True
