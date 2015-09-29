@@ -3,6 +3,8 @@ import datetime
 import numbers
 import math
 
+from fnmatch import fnmatchcase
+
 class DoV:
     TIM = 0
     DOM = 1
@@ -39,7 +41,8 @@ class EqMixin(object):
 
 
 class Meta(EqMixin):
-    def __init__(self, src, dov=None, attr=None, comp=None, pt_or_elem_id=None, tfm=False):
+    def __init__(self, src, dov=None, attr=None, comp=None,
+            pt_or_elem_id=None, tfm=False, axis=-1):
         if src and isinstance(src, Meta):
             # copy other
             self.col  = src.col
@@ -49,6 +52,7 @@ class Meta(EqMixin):
             self.comp = src.comp
             self.src  = src.src
             self.tfm  = src.tfm
+            self.axis = src.axis
         elif src and isinstance(src, dict):
             self.col  = int(src["c"]) - 1 if "c" in src else None
             self.dov  = DoV.from_str(src["t"])
@@ -57,6 +61,7 @@ class Meta(EqMixin):
             self.comp = src["cmp"] if "cmp" in src else None
             self.src  = src["src"] if "src" in src else None
             self.tfm  = src["tfm"] if "tfm" in src else False
+            self.axis = src["axis"] if "axis" in src else -1
         else:
             assert isinstance(dov, DoV)
             assert attr != None
@@ -68,6 +73,7 @@ class Meta(EqMixin):
             self.comp = comp
             self.src  = src
             self.tfm  = tfm
+            self.axis = axis
 
     def __str__(self):
         s = ""
@@ -284,3 +290,28 @@ class Point(EqMixin):
         return coords
 
 
+class Attribute:
+    def __init__(self, attr, axis=-1):
+        self.attr = attr
+        self.axis = axis
+
+    def matches(self, s):
+        return fnmatchcase(s, self.attr)
+
+    def get_axis(self):
+        return self.axis
+
+class AttributePack:
+    axis = 0
+
+    def __init__(self, attrs):
+        self.attrs = []
+        if attrs[0] == '(' and attrs[-1] == ')':
+            for a in attrs[1:-1].split(","):
+                self.attrs.append(Attribute(a, AttributePack.axis))
+                AttributePack.axis += 1
+        else:
+            self.attrs.append(Attribute(attrs))
+
+    def get_attrs(self):
+        return self.attrs

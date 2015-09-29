@@ -91,21 +91,23 @@ class Plot:
         else:
             raise TypeError("parameter meta is neither None nor list")
 
-        meta_by_attr = {}
+        meta_by_attr = {} # (attr, axis) --> [ (index, meta), ... ]
+        meta_by_attr_order = []
 
         # each attribute will be plotted in a separate subplot
         times = None
         xlabel = None
         for i, m in enumerate(meta):
-            a = m.attr
             if m.dov == DoV.TIM:
                 times = recs[:, i]
-                xlabel = a
+                xlabel = m.attr
             elif m.dov == DoV.VAL:
-                if a not in meta_by_attr:
-                    meta_by_attr[a] = [(i, m)]
+                key = (m.attr if m.axis == -1 else None, m.axis)
+                if key not in meta_by_attr:
+                    meta_by_attr[key] = [(i, m)]
+                    meta_by_attr_order.append(key)
                 else:
-                    meta_by_attr[a].append((i, m))
+                    meta_by_attr[key].append((i, m))
         if recs.shape[1] == 1:
             xlabel = "n"
         else:
@@ -127,9 +129,8 @@ class Plot:
         self._plot_xdata_by_file_and_series.append(plot_xdata_by_series)
         self._plot_ydata_by_file_and_series.append(plot_ydata_by_series)
 
-        for ax_id, am in enumerate(sorted(meta_by_attr.items())):
-            attr = am[0]
-            metas = am[1]
+        for ax_id, key in enumerate(meta_by_attr_order):
+            metas = meta_by_attr[key]
 
             ymax = float("-inf")
             ymin = float("inf")
@@ -423,13 +424,3 @@ set mxtics
 
         global time_plot
         time_plot += time.time() - start_time
-
-
-
-
-
-
-
-
-
-

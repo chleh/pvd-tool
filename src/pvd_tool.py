@@ -40,8 +40,6 @@ import imp
 
 import time # for performance measurement
 
-from fnmatch import fnmatchcase
-
 import numbers
 import six
 
@@ -113,9 +111,9 @@ def get_attribute_idcs(fieldData, attrs):
         num_arr = fieldData.GetNumberOfArrays()
         for i in xrange(num_arr):
             n = fieldData.GetArray(i).GetName()
-            if fnmatchcase(n, a):
+            if a.matches(n):
                 if i not in idcs_set:
-                    idcs.append((i, n))
+                    idcs.append((i, n, a.get_axis()))
                     idcs_set.add(i)
                 found = True
         # if num_arr != 0 and not found:
@@ -183,7 +181,7 @@ def get_point_data_from_grid(
         for ci, comp in enumerate(comps):
             comp = comps[ci]
             rec.append(comp)
-            meta.append(Meta(src, DoV.VAL, an, ci, point))
+            meta.append(Meta(src, DoV.VAL, an, ci, point, axis=attrIdcs[ai][2]))
 
 def get_cell_data_from_grid(
         cell, grid, src, attrIdcs, attrData, incl_coords,
@@ -210,7 +208,7 @@ def get_cell_data_from_grid(
         for ci, comp in enumerate(comps):
             comp = comps[ci]
             rec.append(comp)
-            meta.append(Meta(src, DoV.VAL, an, ci, cell))
+            meta.append(Meta(src, DoV.VAL, an, ci, cell, axis=attrIdcs[ai][2]))
 
 
 def filter_grid_ts(src, grid, timestep, attrs, points_cells, incl_coords):
@@ -288,10 +286,10 @@ def filter_grid_dom(src, grid, attrs, points_cells, incl_coords):
     gridCells  = grid.GetCells()
 
     attrIdcsPt = get_attribute_idcs(grid.GetPointData(), attrs)
-    attrDataPt = [ grid.GetPointData().GetArray(i) for i, _ in attrIdcsPt ]
+    attrDataPt = [ grid.GetPointData().GetArray(i) for i, _1, _2 in attrIdcsPt ]
 
     attrIdcsCell = get_attribute_idcs(grid.GetCellData(), attrs)
-    attrDataCell = [ grid.GetCellData().GetArray(i) for i, _ in attrIdcsCell ]
+    attrDataCell = [ grid.GetCellData().GetArray(i) for i, _1, _2 in attrIdcsCell ]
 
     npts = gridPoints.GetNumberOfPoints()
     ncells = gridCells.GetNumberOfCells()
@@ -326,7 +324,7 @@ def filter_grid_dom(src, grid, attrs, points_cells, incl_coords):
 
             grid_interpolated = probeFilter.GetOutput()
             attrIdcsCoords = get_attribute_idcs(grid_interpolated.GetPointData(), attrs)
-            attrDataCoords = [ grid_interpolated.GetPointData().GetArray(i) for i, _ in attrIdcsCoords ]
+            attrDataCoords = [ grid_interpolated.GetPointData().GetArray(i) for i, _1, _2 in attrIdcsCoords ]
 
         recs = []
         meta = []
@@ -349,8 +347,8 @@ def filter_grid_dom(src, grid, attrs, points_cells, incl_coords):
                     get_point_data_from_grid(point_cell, p, grid, src, attrIdcsPt,
                             attrDataPt, incl_coords, rec, tmp_meta)
             elif isinstance(point_cell, Cell):
-                get_cell_data_from_grid(point_cell, grid, src, attrIdcsCell, attrDataCell, True,
-                        rec, tmp_meta)
+                get_cell_data_from_grid(point_cell, grid, src, attrIdcsCell,
+                        attrDataCell, incl_coords, rec, tmp_meta)
             else:
                 print("Error: Given object is neither point nor cell index")
                 assert False
@@ -935,7 +933,7 @@ class FileFilterByTimestep:
     def filter(self, ts, fn):
         if self._timesteps:
             for t in self._timesteps:
-                print("ts vs t {} {} -- {} ?<? {}".format(ts, t, abs(ts-t), sys.float_info.epsilon))
+                # print("ts vs t {} {} -- {} ?<? {}".format(ts, t, abs(ts-t), sys.float_info.epsilon))
                 if abs(ts-t) < sys.float_info.epsilon \
                         or (ts != 0.0 and abs(ts-t)/ts < 1.e-6):
                     return True
@@ -1342,7 +1340,7 @@ def _run_main():
     parser_frag_ts = argparse.ArgumentParser(description="compute timeseries", add_help=False)
     parser_frag_ts.add_argument("-p", "--point", type=Point, action="append", required=False, dest="points_cells")
     parser_frag_ts.add_argument("-c", "--cell",  type=Cell,  action="append", required=False, dest="points_cells")
-    parser_frag_ts.add_argument("-a", "--attr",            action="append", required=False)
+    parser_frag_ts.add_argument("-a", "--attr",  type=AttributePack, action="append", required=False)
 
 
     # timeseries
@@ -1379,8 +1377,12 @@ def _run_main():
     parser_proxy.add_argument("-o", "--out", action="append", type=OutputFileArgument, help="output file", dest="out_files", metavar="OUT_FILE", default=[])
     parser_proxy.set_defaults(func=process_proxy)
     
-
     args = parser.parse_args()
+    if "attr" in args:
+        attrs = []
+        for a in args.attr:
+            attrs += a.get_attrs()
+        args.attr = attrs
 
     args.func(args)
 
