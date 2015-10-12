@@ -16,6 +16,7 @@ import threading
 from helpers import *
 
 import os.path
+import sys
 
 
 time_plot = 0.0
@@ -317,11 +318,12 @@ class GnuPlot(Plot):
         for xdata, ydata in zip(xdatas, ydatas):
             if xdata is None:
                 for y in ydata:
-                    gp(" {:.16e}\n".format(y))
+                    # precision is chosen s.t. both steps and jitter are avoided
+                    gp(" {:.14e}\n".format(y))
                 gp("EOF\n")
             else:
                 for x, y in zip(xdata, ydata):
-                    gp(" {:.16e} {:16e}\n".format(x, y))
+                    gp(" {:.14e} {:.14e}\n".format(x, y))
                 gp("EOF\n")
 
     def _write_data_to_gnuplot(self, worker_id, proc):
@@ -332,6 +334,13 @@ class GnuPlot(Plot):
         width = 800 if xplots == 1 else 1200
         height=width/8/xplots*(6+4*(yplots-1))
 
+        def debug_gp(w):
+            def wrt(s):
+                sys.stderr.write(s)
+                w(s)
+            return wrt
+
+        # gp = debug_gp(proc.stdin.write)
         gp = proc.stdin.write
         gp("set encoding utf8\n")
         gp("set terminal pngcairo noenhanced size {},{} \n".format(width, height))
