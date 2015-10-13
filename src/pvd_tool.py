@@ -956,7 +956,6 @@ def version_sort(in_files):
 
 # TODO provide a similar function also for similar cases
 def process_timeseries_diff(args):
-    if not args.attr: args.attr = ['*']
     if args.out_plot:
         import matplotlib as mpl # needed to avoid conflicts with vtk
         import matplotlib.pyplot as plt
@@ -1031,7 +1030,6 @@ def process_timeseries_diff(args):
 
 
 def process_timeseries(args):
-    if not args.attr: args.attr = ['*']
     if args.out_plot:
         import matplotlib as mpl # needed to avoid conflicts with vtk
         import matplotlib.pyplot as plt
@@ -1379,10 +1377,13 @@ def _run_main():
     
     args = parser.parse_args()
     if "attr" in args:
-        attrs = []
-        for a in args.attr:
-            attrs += a.get_attrs()
-        args.attr = attrs
+        if args.attr:
+            attrs = []
+            for a in args.attr:
+                attrs += a.get_attrs()
+            args.attr = attrs
+        else:
+            args.attr = [ Attribute('*') ]
 
     args.func(args)
 
