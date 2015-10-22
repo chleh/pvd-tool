@@ -385,7 +385,7 @@ set mxtics
                     label = self._labels_by_series[series_id]
 
                     # no markers if more than 50 data points
-                    ma = marker.next() if len(ydata) <= 50 else None
+                    ma = len(ydata) <= 50
 
                     xdatas.append(xdata)
                     ydatas.append(ydata)
