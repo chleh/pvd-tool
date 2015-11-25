@@ -1020,10 +1020,10 @@ def process_timeseries_diff(args):
             if True: #args.combine_domains:
                 meta, recs = combine_domains(meta, recs)
 
-            write_csv(meta, recs, outfh, args.csv_prec[0], json_enc)
+            write_csv(meta, recs, outfh, args.prec[0], json_enc)
 
     if args.out_plot:
-        plt = Plot()
+        plt = Plot(args.prec[0])
         for meta, recs, outfh in get_output_data_diff(aggr_data, args.out_plot):
             plt.plot_to_file(meta, recs, outfh)
 
@@ -1107,11 +1107,11 @@ def process_timeseries(args):
         if args.combine_domains:
             meta, recs = combine_domains(meta, recs)
 
-        write_csv(meta, recs, outfh, args.csv_prec[0], json_enc)
+        write_csv(meta, recs, outfh, args.prec[0], json_enc)
 
 
     # plot
-    plt = Plot()
+    plt = Plot(args.prec[0])
     for nums_tfms, outfh in args.out_plot or []:
         meta = []
         recs = []
@@ -1223,13 +1223,13 @@ def process_whole_domain(args):
                             else:
                                 fn = "{}_{}.csv".format(outdirn, t)
                             print("csv output to {}".format(fn))
-                        write_csv(meta, recs, fn, args.csv_prec[0], json_enc)
+                        write_csv(meta, recs, fn, args.prec[0], json_enc)
 
         if args.out_plot:
             assert(args.num_threads >= 0)
 
             # plot
-            plt = Plot()
+            plt = Plot(args.prec[0])
             for nums_tfms, outdirn in args.out_plot or []:
                 for ti in range(len(timesteps[nums_tfms[0][0]])):
                     meta = []
@@ -1326,7 +1326,7 @@ def _run_main():
 
     parser_io.add_argument("-i", "--in", nargs='+', type=InputFile, required=True, help="input file", dest="in_files", metavar="IN_FILE")
     parser_io.add_argument("--no-combine-domains", action="store_false", dest="combine_domains", help="do not combine domains when aggregating several input files into one output file")
-    parser_io.add_argument("--csv-prec", nargs=1, type=int, help="decimal precision for csv output", default=[6])
+    parser_io.add_argument("--prec", nargs=1, type=int, help="decimal precision for output", default=[14])
     parser_io.add_argument("--no-coords", action="store_false", dest="out_coords", help="do not output coordinate columns")
     parser_io.add_argument("--version-sort-inputs", "-V", action="store_true", dest="version_sort", help="version sort input file names before further processing")
 
@@ -1353,7 +1353,7 @@ def _run_main():
     parser_tsd.add_argument("-i", "--in", nargs=2, type=InputFile, required=True, help="input file", dest="in_files", metavar="IN_FILE")
     parser_tsd.add_argument("--out-plot", nargs=1, type=OutputFileArgument)
     parser_tsd.add_argument("--out-csv",  nargs=1, type=OutputFileArgument)
-    parser_tsd.add_argument("--csv-prec", nargs=1, type=int, help="decimal precision for csv output", default=[6])
+    parser_tsd.add_argument("--prec", nargs=1, type=int, help="decimal precision for output", default=[6])
     parser_tsd.set_defaults(func=process_timeseries_diff)
 
 

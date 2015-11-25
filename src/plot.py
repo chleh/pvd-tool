@@ -23,8 +23,9 @@ time_plot = 0.0
 time_plot_save = 0.0
 
 
-class Plot:
-    def __init__(self):
+class Plot(object):
+    def __init__(self, precision):
+        self._precision = precision
         self._series = []
         self._fig = None
         self._plot_xdata_by_file_and_series = []
@@ -291,6 +292,9 @@ class MPLPlot(Plot):
 
 # TODO xlabel, markers, log scale
 class GnuPlot(Plot):
+    def __init__(self, *args, **kwargs):
+        super(GnuPlot, self).__init__(*args, **kwargs)
+
     def _write_plot(self, gp, xdatas, ydatas, labels, markers):
         first = True
 
@@ -315,15 +319,18 @@ class GnuPlot(Plot):
                     gp('{} w l t "{}"'.format(plotcmd, label.short_format()))
         gp("\n")
 
+        fmt1 = " {:." + str(self._precision) + "e}"
+        fmt2 = fmt1 * 2 + "\n"
+        fmt1 += "\n"
+
         for xdata, ydata in zip(xdatas, ydatas):
             if xdata is None:
                 for y in ydata:
-                    # precision is chosen s.t. both steps and jitter are avoided
-                    gp(" {:.14e}\n".format(y))
+                    gp(fmt1.format(y))
                 gp("EOF\n")
             else:
                 for x, y in zip(xdata, ydata):
-                    gp(" {:.14e} {:.14e}\n".format(x, y))
+                    gp(fmt2.format(x, y))
                 gp("EOF\n")
 
     def _write_data_to_gnuplot(self, worker_id, proc):
