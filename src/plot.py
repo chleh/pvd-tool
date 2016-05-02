@@ -300,6 +300,14 @@ class GnuPlot(Plot):
 
         gp("set lmargin 9\n")
 
+        ymin = float("inf")
+        ymax = float("-inf")
+        for ydata in ydatas:
+            ymin = min(ymin, np.min(ydata))
+            ymax = max(ymax, np.max(ydata))
+        gp('set label 1 "y data range [{:.14g}, {:.14g}]"'.format(ymin, ymax)
+                + ' at graph 0.05, 0.1 back\n')
+
         for label, marker, xdata in zip(labels, markers, xdatas):
             if first:
                 first = False
@@ -362,6 +370,7 @@ set tics in back
 # set xzeroaxis ls -1
 set mxtics
 # set mytics
+set format y "%.4g"
 """)
 
         while True:
