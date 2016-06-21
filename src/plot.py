@@ -33,7 +33,7 @@ class Plot(object):
         self._labels_by_series = []
         self._output_files = []
         self._axis_ids = []
-        
+
         self._work_queue = multiprocessing.Queue()
 
     def plot_to_file(self, *args):
@@ -341,7 +341,7 @@ class GnuPlot(Plot):
                     gp(fmt2.format(x, y))
                 gp("EOF\n")
 
-    def _write_data_to_gnuplot(self, worker_id, proc):
+    def _write_data_to_gnuplot(self, worker_id, proc, go_on_event):
         # nplots = len(self._plot_xdata_by_file_and_series[0])
         nplots = len(np.unique(self._axis_ids))
         xplots = 1 if nplots <= 6 else 2
@@ -373,7 +373,7 @@ set mxtics
 set format y "%.4g"
 """)
 
-        while True:
+        while go_on_event.is_set():
             work = self._work_queue.get()
             if work is None:
                 self._work_queue.put(None)
@@ -432,16 +432,31 @@ set format y "%.4g"
             self._work_queue.put((fn, xdata_by_series, ydata_by_series))
         self._work_queue.put(None)
 
+        go_on_event = threading.Event()
+        go_on_event.set()
+
         workers = []
         procs = []
         for i in range(num_threads):
             proc = subprocess.Popen(["gnuplot"], stdin=subprocess.PIPE)
             procs.append(proc)
 
-            w = threading.Thread(target=self._write_data_to_gnuplot, args=(i, proc))
+            w = threading.Thread(target=self._write_data_to_gnuplot, args=(i, proc, go_on_event))
             workers.append(w)
 
             w.start()
+
+        try:
+            while True:
+                time.sleep(0.1)
+                for w in workers:
+                    if w.is_alive():
+                        break
+                else:
+                    # no alive workers anymore, break infinite loop
+                    break
+        except KeyboardInterrupt:
+            go_on_event.clear()
 
         for w, p in zip(workers, procs):
             w.join()
