@@ -216,10 +216,10 @@ def filter_grid_ts(src, grid, timestep, attrs, points_cells, incl_coords):
     gridCells  = grid.GetCells()
 
     attrIdcsPt = get_attribute_idcs(grid.GetPointData(), attrs)
-    attrDataPt = [ grid.GetPointData().GetArray(i) for i, _ in attrIdcsPt ]
+    attrDataPt = [ grid.GetPointData().GetArray(i) for i, _1, _2 in attrIdcsPt ]
 
     attrIdcsCell = get_attribute_idcs(grid.GetCellData(), attrs)
-    attrDataCell = [ grid.GetCellData().GetArray(i) for i, _ in attrIdcsCell ]
+    attrDataCell = [ grid.GetCellData().GetArray(i) for i, _1, _2 in attrIdcsCell ]
 
     npts = gridPoints.GetNumberOfPoints()
     ncells = gridCells.GetNumberOfCells()
@@ -697,7 +697,9 @@ def OutputFile(val):
             outfh = sys.stdout
         else:
             path = os.path.expanduser(path)
-            assert os.path.isfile(path) and os.access(path, os.W_OK)
+            # assert os.path.isfile(path) and os.access(path, os.W_OK)
+            with open(path, "w") as outfh:
+                pass
             outfh = path
     except IOError as e:
         raise argparse.ArgumentTypeError("I/O error({0}) when trying to open `{2}': {1}".format(e.errno, e.strerror, path))
@@ -1060,7 +1062,7 @@ def process_timeseries(args):
     assert len(req_out) > 0
 
     timesteps, vtuFiles, vtuFiles_transformed = \
-            load_input_files(in_files, req_out, args.script, args.script_param)
+            load_input_files(in_files, req_out, args.script, args.script_param, FileFilterByTimestep(None))
 
     # aggregate timeseries data
     aggr_data = [ [ None, None ] for _ in in_files ]
@@ -1068,7 +1070,7 @@ def process_timeseries(args):
     for nums_tfms, _ in req_out:
         for num, tfm in nums_tfms:
             src = in_files[num][0]
-            if src is None: src = in_files[num][1].name
+            if src is None: src = in_files[num][1]
 
             tss = timesteps[num]
             if   tfm == 0: rng = [0]
@@ -1125,7 +1127,9 @@ def process_timeseries(args):
                 meta += m
         recs = combine_arrays(recs)
 
-        plt.plot_to_file(meta, recs, outfh)
+        # plt.plot_to_file(meta, recs, outfh)
+        plt.add_data(meta, recs, outfh)
+    plt.do_plots(1)
 
 
 def process_whole_domain(args):
