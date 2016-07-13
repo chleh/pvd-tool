@@ -542,7 +542,7 @@ def gather_grids(infh, reader, filefilter=None):
         if (not filefilter) or filefilter.filter(t, f):
             grids[i] = get_grid(f)
 
-    return timesteps, grids
+    return timesteps, grids, fs
 
 
 def get_timeseries(src, grids, tss, attrs, points, incl_coords):
@@ -810,22 +810,20 @@ def load_input_files(in_files, req_out, script_fh, script_params, filefilter):
     if script_fh is not None and isinstance(script_fh, list): script_fh = script_fh[0]
     reader = vtk.vtkXMLUnstructuredGridReader()
 
-    timesteps = [ None for _ in range(len(in_files)) ]
-    vtuFiles =  [ None for _ in range(len(in_files)) ]
-    vtuFiles_transformed = [ None for _ in range(len(in_files)) ]
-
     scr_loaded = False
 
     if input_type == ".pvd":
         timesteps = [ None for _ in range(len(in_files)) ]
         vtuFiles =  [ None for _ in range(len(in_files)) ]
         vtuFiles_transformed = [ None for _ in range(len(in_files)) ]
+        vtuPaths =  [ None for _ in range(len(in_files)) ]
 
         # load and, if necessary, transform source files
         for nums_tfms, _ in req_out:
             for num, tfm in nums_tfms:
                 if not vtuFiles[num]:
-                    timesteps[num], vtuFiles[num] = gather_grids(in_files[num][1], reader, filefilter)
+                    timesteps[num], vtuFiles[num], vtuPaths[num] \
+                            = gather_grids(in_files[num][1], reader, filefilter)
                 if tfm != 0:
                     assert script_fh is not None
                     if not scr_loaded:
@@ -843,6 +841,7 @@ def load_input_files(in_files, req_out, script_fh, script_params, filefilter):
         timesteps = [ [ None ]*len(in_files) ]
         vtuFiles =  [ [ None ]*len(in_files) ]
         vtuFiles_transformed = [ None ]
+        vtuPaths =  [ [ None ]*len(in_files) ]
 
         # load and, if necessary, transform source files
         for nums_tfms, _ in req_out:
@@ -850,9 +849,10 @@ def load_input_files(in_files, req_out, script_fh, script_params, filefilter):
                 assert num == 0
                 for fi, (_, in_file) in enumerate(in_files):
                     if filefilter.filter(fi, in_file):
-                        _, vtu = gather_grids(in_file, reader)
+                        _, vtu, vtuPath = gather_grids(in_file, reader)
                         timesteps[0][fi] = fi
                         vtuFiles[0][fi] = vtu[0]
+                        vtuPaths[0][fi] = vtuPath[0]
                 if tfm != 0:
                     assert script_fh is not None
                     if not scr_loaded:
@@ -867,7 +867,7 @@ def load_input_files(in_files, req_out, script_fh, script_params, filefilter):
                     if not vtuFiles_transformed[0]:
                         vtuFiles_transformed[0] = apply_script(analytical_model.get_attribute_functions(), timesteps[0], vtuFiles[0])
 
-    return timesteps, vtuFiles, vtuFiles_transformed
+    return timesteps, vtuFiles, vtuFiles_transformed, vtuPaths
 
 
 def get_output_data_diff(aggr_data, req_out):
@@ -985,7 +985,7 @@ def process_timeseries_diff(args):
             + (args.out_plot or [])
     assert len(req_out) > 0
 
-    timesteps, vtuFiles, vtuFiles_transformed = \
+    timesteps, vtuFiles, vtuFiles_transformed, _ = \
             load_input_files(in_files, req_out, None, None)
 
     # aggregate timeseries data
@@ -1061,7 +1061,7 @@ def process_timeseries(args):
             + (args.out_plot or [])
     assert len(req_out) > 0
 
-    timesteps, vtuFiles, vtuFiles_transformed = \
+    timesteps, vtuFiles, vtuFiles_transformed, _ = \
             load_input_files(in_files, req_out, args.script, args.script_param, FileFilterByTimestep(None))
 
     # aggregate timeseries data
@@ -1161,7 +1161,7 @@ def process_whole_domain(args):
             + (args.out_pvd or []) \
             + (args.out_plot or [])
 
-    timesteps, vtuFiles, vtuFiles_transformed = \
+    timesteps, vtuFiles, vtuFiles_transformed, vtuPaths = \
             load_input_files(in_files, req_out, args.script, args.script_param, FileFilterByTimestep(args.timestep))
 
     # write csv files
@@ -1263,6 +1263,15 @@ def process_whole_domain(args):
                             else:
                                 fn = "{}_{}.png".format(outdirn, t)
                             print("plot output to {}".format(fn))
+
+                        if args.update:
+                            if os.path.isfile(fn):
+                                mt_in  = os.stat(in_files[ti][1]).st_mtime
+                                mt_out = os.stat(fn).st_mtime
+                                if mt_out > mt_in:
+                                    # print(in_files[ti][1], "is older than out")
+                                    continue
+
                         plt.add_data(meta, recs, fn)
             plt.do_plots(args.num_threads)
 
@@ -1369,6 +1378,7 @@ def _run_main():
     parser_dom.add_argument("--out-plot",          action="append", type=OutputDir)
     parser_dom.add_argument("-t", "--timestep",    action="append", required=False)
     parser_dom.add_argument("-N", "--num-threads", type=int, default=1)
+    parser_dom.add_argument("-U", "--update", action="store_true")
 
     parser_dom.set_defaults(func=process_whole_domain)
 
