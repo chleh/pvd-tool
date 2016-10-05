@@ -1217,7 +1217,7 @@ def process_whole_domain(args):
                     if recs:
                         if len(timesteps) == 1:
                             fn = outdirn \
-                                    + re.sub(r"[.][^.]+$", ".csv", os.path.basename(in_files[ti][1]))
+                                    + re.sub(r"[.][^.]+$", ".csv", os.path.basename(vtuPaths[nums_tfms[0][0]][ti]))
                         else:
                             t = timesteps[num][ti]
                             if isinstance(t, numbers.Integral):
@@ -1253,7 +1253,7 @@ def process_whole_domain(args):
                     if recs:
                         if len(timesteps) == 1:
                             fn = outdirn \
-                                    + re.sub(r"[.][^.]+$", ".png", os.path.basename(in_files[ti][1]))
+                                    + re.sub(r"[.][^.]+$", ".png", os.path.basename(vtuPaths[nums_tfms[0][0]][ti]))
                         else:
                             t = timesteps[num][ti]
                             if isinstance(t, numbers.Integral):
@@ -1266,7 +1266,7 @@ def process_whole_domain(args):
 
                         if args.update:
                             if os.path.isfile(fn):
-                                mt_in  = os.stat(in_files[ti][1]).st_mtime
+                                mt_in  = os.stat(vtuPaths[nums_tfms[0][0]][ti]).st_mtime
                                 mt_out = os.stat(fn).st_mtime
                                 if mt_out > mt_in:
                                     # print(in_files[ti][1], "is older than out")
